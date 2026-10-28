@@ -15,7 +15,7 @@ from alexandria_core.models import (
 
 
 class FileSource(Protocol):
-    """Where PDFs come from: reports what changed and serves file contents."""
+    """Where documents come from: reports what changed and serves file contents."""
 
     def changes(self, cursor: str | None) -> tuple[list[FileChange], str]:
         """Return the files changed since `cursor` (everything when it is None) and the cursor for next time.
@@ -30,10 +30,13 @@ class FileSource(Protocol):
 
 
 class Extractor(Protocol):
-    """Turns a PDF into per-page Markdown."""
+    """Turns a document (PDF, Word, HTML, …) into per-page Markdown."""
 
-    def extract(self, pdf: bytes) -> list[Page]:
-        """Return the PDF's pages in order, numbered from 1."""
+    def extract(self, content: bytes, name: str) -> list[Page]:
+        """Return the document's pages in order, numbered from 1. `name` is the file name, which picks the format.
+
+        A format without pages (Word, HTML, Markdown) comes back as a single page 1.
+        """
         ...
 
 

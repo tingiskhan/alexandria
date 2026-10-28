@@ -1,6 +1,6 @@
 import hashlib
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -35,12 +35,17 @@ class FakeFileSource:
 
 
 class FakeExtractor:
-    """Treats the PDF bytes as UTF-8 with pages separated by form feeds; b"broken" raises."""
+    """Treats the bytes as UTF-8 with pages separated by form feeds; b"broken" raises. Records the file names."""
 
-    def extract(self, pdf: bytes) -> list[Page]:
-        if pdf == b"broken":
+    def __init__(self, formats: Iterable[str] = ()) -> None:
+        self.formats = frozenset(formats)
+        self.names: list[str] = []
+
+    def extract(self, content: bytes, name: str) -> list[Page]:
+        self.names.append(name)
+        if content == b"broken":
             raise ValueError("cannot parse PDF")
-        return [Page(number=n, markdown=text) for n, text in enumerate(pdf.decode().split("\f"), start=1)]
+        return [Page(number=n, markdown=text) for n, text in enumerate(content.decode().split("\f"), start=1)]
 
 
 class FakeEmbedder:

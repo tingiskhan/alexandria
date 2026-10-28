@@ -1,6 +1,6 @@
 """The `alexandria-ingest` command: one-off setup and checks. Syncing runs from alexandria-workflows."""
 
-from pathlib import PurePosixPath
+from collections import Counter
 from typing import Annotated
 
 import typer
@@ -9,6 +9,8 @@ from dropbox.exceptions import DropboxException
 from dropbox.oauth import DropboxOAuth2FlowNoRedirect
 from pydantic import ValidationError
 
+from alexandria_ingest.pipeline import extension
+from alexandria_ingest.settings import ExtractSettings
 from alexandria_ingest.sources import make_source
 
 app = typer.Typer(name="alexandria-ingest", no_args_is_help=True)
@@ -34,8 +36,9 @@ def auth(
 
 @app.command()
 def check_source() -> None:
-    """Check access to the configured source (ALEXANDRIA_SOURCE_KIND) and list the PDFs a sync would see."""
+    """Check access to the configured source (ALEXANDRIA_SOURCE_KIND) and list the files a sync would ingest."""
     try:
+        formats = ExtractSettings().formats
         configured = make_source()
     except ValidationError as error:
         typer.echo(f"Configuration is incomplete; see .env.example.\n{error}", err=True)
@@ -46,9 +49,12 @@ def check_source() -> None:
         typer.echo(f"{configured.name}: access failed: {error}", err=True)
         raise typer.Exit(1) from error
 
-    pdfs = [c.path for c in changes if PurePosixPath(c.path).suffix.lower() == ".pdf"]
-    typer.echo(f"{configured.name}: {len(changes)} files, {len(pdfs)} PDFs")
-    for path in pdfs[:10]:
+    ingested = [c.path for c in changes if extension(c.path) in formats]
+    typer.echo(f"{configured.name}: {len(changes)} files, {len(ingested)} to ingest")
+    if ingested:
+        by_format = Counter(extension(path) for path in ingested)
+        typer.echo("  " + ", ".join(f"{count} {ext}" for ext, count in sorted(by_format.items())))
+    for path in ingested[:10]:
         typer.echo(f"  {path}")
-    if len(pdfs) > 10:
-        typer.echo(f"  … and {len(pdfs) - 10} more")
+    if len(ingested) > 10:
+        typer.echo(f"  … and {len(ingested) - 10} more")

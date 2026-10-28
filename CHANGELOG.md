@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## Unreleased
 
+### Added
+
+- Ingest more than PDFs: Word, PowerPoint, Excel, HTML, Markdown and text by default, and images (OCR) or anything else Docling reads on request. `ALEXANDRIA_EXTRACT_FORMATS` lists the file extensions to ingest. Slides and sheets become pages; Word, HTML, Markdown and text files are a single page.
+- `alexandria-ingest check-source` counts the files to ingest per extension.
+
+### Changed
+
+- `Extractor.extract` takes the file name as well as the content: `extract(content, name)`.
+- The sync cursor is stored under the source name plus the formats. The first sync after upgrading, and after any change to `ALEXANDRIA_EXTRACT_FORMATS`, lists the whole source once; already indexed files are skipped by content hash.
+
 ## 0.1.0
 
 First public release.
