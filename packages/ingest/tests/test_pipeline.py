@@ -3,20 +3,39 @@ from functools import partial
 import pytest
 
 from alexandria_core.models import FileChange
-from alexandria_ingest.pipeline import prepare_file, process_file, reindex_document, sync_changes, triage
+from alexandria_ingest.pipeline import (
+    cursor_key,
+    prepare_file,
+    process_file,
+    reindex_document,
+    sync_changes,
+    triage,
+)
 
 from .fakes import FakeEmbedder, FakeExtractor, FakeFileSource, InMemoryStore
 
 SOURCE = "dropbox:/papers"
+PDF_ONLY = frozenset({"pdf"})
 
 
 def pdf(path: str, content_hash: str = "h1") -> FileChange:
     return FileChange(source_id=path.lower(), path=path, content_hash=content_hash)
 
 
-def run(source: FakeFileSource, store: InMemoryStore) -> list[FileChange]:
+def run(
+    source: FakeFileSource,
+    store: InMemoryStore,
+    formats: frozenset[str] = PDF_ONLY,
+    extractor: FakeExtractor | None = None,
+) -> list[FileChange]:
     process = partial(
-        process_file, source=source, extractor=FakeExtractor(), embedder=FakeEmbedder(), store=store, max_tokens=500
+        process_file,
+        source=source,
+        extractor=extractor or FakeExtractor(),
+        embedder=FakeEmbedder(),
+        store=store,
+        max_tokens=500,
+        formats=formats,
     )
     return sync_changes(SOURCE, source.changes, store, process)
 
@@ -57,13 +76,27 @@ def test_changed_hash_is_reingested(store: InMemoryStore) -> None:
     assert store.content_hash("/a.pdf") == "h2"
 
 
-def test_non_pdf_is_skipped(store: InMemoryStore) -> None:
+def test_formats_not_listed_are_skipped(store: InMemoryStore) -> None:
     source = FakeFileSource(batches=[[pdf("/notes.txt")]])
 
     run(source, store)
 
     assert source.downloads == []
     assert store.documents == {}
+
+
+def test_listed_formats_are_ingested_by_file_name(store: InMemoryStore) -> None:
+    source = FakeFileSource(
+        files={"/notes/plan.docx": b"# Plan\n\nShip it", "/a.pdf": b"text"},
+        batches=[[pdf("/Notes/Plan.DOCX"), pdf("/a.pdf"), pdf("/Notes/todo.md")]],
+    )
+    extractor = FakeExtractor()
+
+    assert run(source, store, formats=frozenset({"docx", "pdf"}), extractor=extractor) == []
+
+    assert extractor.names == ["Plan.DOCX", "a.pdf"]
+    assert store.documents["/notes/plan.docx"].doc.title == "Plan"
+    assert "/notes/todo.md" not in store.documents
 
 
 def test_deletion_removes_document(store: InMemoryStore) -> None:
@@ -158,18 +191,27 @@ def test_reindex_rebuilds_chunks_from_stored_pages(store: InMemoryStore) -> None
     assert source.downloads == ["/a.pdf"]
 
 
-def test_triage_leaves_new_pdfs_to_prepare_and_store(store: InMemoryStore) -> None:
-    assert triage(pdf("/a.pdf"), store=store) is None
-    assert triage(pdf("/notes.txt"), store=store) == "skipped"
+def test_triage_leaves_new_files_of_listed_formats_to_prepare_and_store(store: InMemoryStore) -> None:
+    formats = frozenset({"pdf", "md"})
+    assert triage(pdf("/a.pdf"), store=store, formats=formats) is None
+    assert triage(pdf("/README.MD"), store=store, formats=formats) is None
+    assert triage(pdf("/notes.txt"), store=store, formats=formats) == "skipped"
+    assert triage(pdf("/Makefile"), store=store, formats=formats) == "skipped"
+
+
+def test_cursor_key_changes_with_the_formats() -> None:
+    assert cursor_key("s3:library/", {"pdf", "docx"}) == "s3:library/|docx,pdf"
+    assert cursor_key("s3:library/", {"pdf"}) != cursor_key("s3:library/", {"pdf", "docx"})
 
 
 def test_prepare_file_embeds_without_storing(store: InMemoryStore) -> None:
     source = FakeFileSource(files={"/a.pdf": b"# Intro\n\nHello"})
 
-    indexed = prepare_file(
-        pdf("/a.pdf"), source=source, extractor=FakeExtractor(), embedder=FakeEmbedder(), max_tokens=500
-    )
+    extractor = FakeExtractor()
 
+    indexed = prepare_file(pdf("/a.pdf"), source=source, extractor=extractor, embedder=FakeEmbedder(), max_tokens=500)
+
+    assert extractor.names == ["a.pdf"]
     assert indexed.document.title == "a"
     assert [c.chunk.text for c in indexed.chunks] == ["# Intro\n\nHello"]
     assert store.documents == {}

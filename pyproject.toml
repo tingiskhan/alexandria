@@ -1,7 +1,7 @@
 [project]
 name = "alexandria"
 version = "0.1.0"
-description = "Sync PDFs from S3 or Dropbox into Postgres (pgvector + full-text search) and search them from an LLM agent over MCP"
+description = "Sync documents (PDF, Word, PowerPoint, Excel, HTML, Markdown…) from S3 or Dropbox into Postgres (pgvector + full-text search) and search them from an LLM agent over MCP"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

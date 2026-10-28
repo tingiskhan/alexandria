@@ -1,6 +1,6 @@
 # alexandria-ingest
 
-Turns PDFs from a file source into searchable chunks in the document store:
+Turns documents (PDF, Word, PowerPoint, Excel, HTML, Markdown, text, images) from a file source into searchable chunks in the document store:
 
 ```text
 FileSource.changes ──► download ──► DoclingExtractor ──► chunk_pages ──► Embedder ──► DocumentStore.upsert_document
@@ -14,17 +14,17 @@ This package holds the steps only. Scheduling, retries and the composition root 
 | Module | What it does |
 | --- | --- |
 | `pipeline.py` | The steps for one file (`triage`, `prepare_file`, `store_document`, or all three via `process_file`), `sync_changes` for a whole sync, and `reindex_document` to re-embed what is already stored. Every dependency is a keyword argument. |
-| `extract.py` | `DoclingExtractor`: PDF bytes to one Markdown string per page, with OCR for scanned pages and table structure recognition. Uses the GPU when one is available. |
+| `extract.py` | `DoclingExtractor`: document bytes to one Markdown string per page, with OCR for scanned pages and images and table structure recognition. The file name picks the format; formats without pages (Word, HTML, Markdown, text) come out as one page. Uses the GPU when one is available. |
 | `chunk.py` | `chunk_pages` and `embedding_text`. Pure functions, no I/O. |
 | `sources/` | One module per file source, plus `make_source()`, which builds the configured one. |
-| `settings.py` | `ChunkSettings` and `SourceSettings`. Each source's settings sit next to the source itself. |
+| `settings.py` | `ChunkSettings`, `ExtractSettings` (which file extensions to ingest) and `SourceSettings`. Each source's settings sit next to the source itself. |
 | `cli.py` | The `alexandria-ingest` command. |
 
 ## How a sync works
 
 `sync_changes(source_name, list_changes, store, process)`:
 
-1. Reads the cursor stored under `source_name` and calls `list_changes` (normally `source.changes`) to get what changed since then.
+1. Reads the cursor stored under `source_name` (the source's name plus its formats, from `cursor_key`, so adding a format triggers one full listing) and calls `list_changes` (normally `source.changes`) to get what changed since then.
 2. Adds documents that failed on an earlier run, so they are retried.
 3. Calls `process` for each change. If a file raises an exception, it is recorded with `status = failed` and the run continues.
 4. Saves the new cursor, even if some files failed. Those files are picked up again by step 2 next time.
@@ -33,7 +33,7 @@ Each change goes through up to three steps. `process_file` runs them in a row. T
 
 1. **`triage`** (store only) handles what doesn't need a download:
    - deleted: removes the document, along with its pages and chunks;
-   - not a `.pdf`: skips it;
+   - extension not in `ALEXANDRIA_EXTRACT_FORMATS`: skips it;
    - content hash already stored: skips it, so a full re-listing costs nothing for files that haven't changed.
 
    Otherwise it returns `None`.
@@ -50,7 +50,7 @@ Each change goes through up to three steps. `process_file` runs them in a row. T
 
 ## Sources
 
-`ALEXANDRIA_SOURCE_KIND` picks the source. Run `alexandria-ingest check-source` to check access and see which PDFs a sync would pick up.
+`ALEXANDRIA_SOURCE_KIND` picks the source. Run `alexandria-ingest check-source` to check access and see which files a sync would pick up.
 
 | Kind | Module | Change detection | `source_id` |
 | --- | --- | --- | --- |
@@ -75,7 +75,7 @@ A source has two jobs: report every deletion and give each file a stable content
 ## CLI
 
 ```bash
-uv run --extra cpu alexandria-ingest check-source             # check access to the configured source and list its PDFs
+uv run --extra cpu alexandria-ingest check-source             # check access to the configured source and list the files to ingest
 uv run --extra cpu alexandria-ingest auth --app-key <key>     # Dropbox only: one-off consent, prints the refresh token
 ```
 

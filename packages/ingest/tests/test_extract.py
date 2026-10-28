@@ -15,7 +15,7 @@ def extractor() -> DoclingExtractor:
 
 
 def test_born_digital_pdf_gives_text_per_page(extractor: DoclingExtractor) -> None:
-    pages = extractor.extract((DATA / "born_digital.pdf").read_bytes())
+    pages = extractor.extract((DATA / "born_digital.pdf").read_bytes(), "born_digital.pdf")
 
     assert [p.number for p in pages] == [1, 2]
     assert "revenue rose twelve percent" in pages[0].markdown.lower()
@@ -23,7 +23,7 @@ def test_born_digital_pdf_gives_text_per_page(extractor: DoclingExtractor) -> No
 
 
 def test_scanned_pdf_is_ocred(extractor: DoclingExtractor) -> None:
-    pages = extractor.extract((DATA / "scanned.pdf").read_bytes())
+    pages = extractor.extract((DATA / "scanned.pdf").read_bytes(), "scanned.pdf")
 
     assert [p.number for p in pages] == [1]
     assert "4471" in pages[0].markdown

@@ -19,13 +19,14 @@ from alexandria_ingest.extract import DoclingExtractor
 from alexandria_ingest.pipeline import (
     IndexedDocument,
     Outcome,
+    cursor_key,
     prepare_file,
     reindex_document,
     store_document,
     sync_changes,
     triage,
 )
-from alexandria_ingest.settings import ChunkSettings
+from alexandria_ingest.settings import ChunkSettings, ExtractSettings
 from alexandria_ingest.sources import make_source
 
 if TYPE_CHECKING:
@@ -42,11 +43,12 @@ class Pipeline:
     embedder: Embedder
     store: DocumentStore
     max_tokens: int
+    formats: frozenset[str]  # file extensions to ingest
 
 
 def build_pipeline() -> Pipeline:
     """Composition root for the ingest job. Settings are loaded first, so missing config fails before any work."""
-    database, embedding, chunk = DatabaseSettings(), EmbeddingSettings(), ChunkSettings()
+    database, embedding, chunk, extract = DatabaseSettings(), EmbeddingSettings(), ChunkSettings(), ExtractSettings()
     source = make_source()
     engine = make_engine(database.url.get_secret_value())
     wait_for_database(engine)
@@ -57,12 +59,13 @@ def build_pipeline() -> Pipeline:
             f"{embedder.model_name} has {embedder.dimension} dimensions; the schema has {EMBEDDING_DIMENSION}"
         )
     return Pipeline(
-        source_name=source.name,
+        source_name=cursor_key(source.name, extract.formats),
         source=source.source,
-        extractor=DoclingExtractor(),
+        extractor=DoclingExtractor(extract.formats),
         embedder=embedder,
         store=PgStore(engine),
         max_tokens=chunk.max_tokens,
+        formats=extract.formats,
     )
 
 
@@ -78,7 +81,7 @@ def list_changes_task(source: FileSource, cursor: str | None) -> tuple[list[File
 @task(retries=3, retry_delay_seconds=10, cache_policy=NO_CACHE, task_run_name="triage {change.path}")
 def triage_task(change: FileChange, pipeline: Pipeline) -> Outcome | None:
     """Run `triage`."""
-    return triage(change, store=pipeline.store)
+    return triage(change, store=pipeline.store, formats=pipeline.formats)
 
 
 @task(retries=2, retry_delay_seconds=60, cache_policy=NO_CACHE, task_run_name="prepare {change.path}")

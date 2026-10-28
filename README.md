@@ -3,7 +3,7 @@
 [![CI](https://github.com/tingiskhan/alexandria/actions/workflows/ci.yml/badge.svg)](https://github.com/tingiskhan/alexandria/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Alexandria syncs PDFs from an S3-compatible store (AWS, RustFS, MinIO) or Dropbox, indexes them in Postgres (pgvector plus full-text search), and lets an LLM agent search them and read exact pages over [MCP](https://modelcontextprotocol.io).
+Alexandria syncs documents (PDF, Word, PowerPoint, Excel, HTML, Markdown, text, and optionally images) from an S3-compatible store (AWS, RustFS, MinIO) or Dropbox, indexes them in Postgres (pgvector plus full-text search), and lets an LLM agent search them and read exact pages over [MCP](https://modelcontextprotocol.io).
 
 ```text
 S3/Dropbox ──► alexandria-workflows (Prefect) → alexandria-ingest ──► Postgres + pgvector ◄── alexandria-mcp ◄── Claude
@@ -45,7 +45,7 @@ Before starting compose, fill in two passwords in `.env`. Compose reads them fro
 - `POSTGRES_PASSWORD`: the password for the local Postgres. `ALEXANDRIA_DATABASE_URL` refers to it as `${POSTGRES_PASSWORD}`, so you set it only once.
 - `ALEXANDRIA_S3_SECRET_ACCESS_KEY`: the RustFS admin password, at least 8 characters. The admin user is `ALEXANDRIA_S3_ACCESS_KEY_ID` (`alexandria`).
 
-Open the RustFS console at <http://localhost:9001/rustfs/console/>, log in with that access key and secret, create a bucket named `library` and upload a few PDFs. Then check that Alexandria sees them:
+Open the RustFS console at <http://localhost:9001/rustfs/console/>, log in with that access key and secret, create a bucket named `library` and upload a few PDFs or other documents. Then check that Alexandria sees them:
 
 ```bash
 uv run --extra cpu alexandria-ingest check-source
@@ -97,18 +97,27 @@ Secrets are `SecretStr`, so they never appear in logs or reprs. An empty value (
 | `ALEXANDRIA_EMBEDDING_REVISION` | `EmbeddingSettings` | no (pinned commit) | workflows, MCP | Ingest and MCP must use the same model and revision |
 | `ALEXANDRIA_EMBEDDING_BATCH_SIZE` | `EmbeddingSettings` | no (`32`) | workflows | |
 | `ALEXANDRIA_CHUNK_MAX_TOKENS` | `ChunkSettings` (ingest) | no (`500`) | workflows | |
+| `ALEXANDRIA_EXTRACT_FORMATS` | `ExtractSettings` (ingest) | no (`pdf,docx,pptx,xlsx,html,htm,md,txt`) | workflows | File extensions to ingest, comma-separated; see [File formats](#file-formats) |
 
 To add settings for a new component, define a `BaseSettings` subclass in its package with `model_config = settings_config("ALEXANDRIA_<COMPONENT>_")` from `alexandria_core.settings`, and load it in the entry points that use it.
 
 ## Sources
 
-Pick one with `ALEXANDRIA_SOURCE_KIND`, then check that Alexandria can reach it and sees your PDFs:
+Pick one with `ALEXANDRIA_SOURCE_KIND`, then check that Alexandria can reach it and sees your documents:
 
 ```bash
 uv run --extra cpu alexandria-ingest check-source
 ```
 
 Documents are keyed by the source's file id (the S3 key or the Dropbox path), so a moved or renamed file is re-ingested. To add another kind of source, see [Adding a source](packages/ingest/README.md#adding-a-source).
+
+### File formats
+
+`ALEXANDRIA_EXTRACT_FORMATS` lists the file extensions to ingest; other files are skipped. Everything goes through Docling, so any extension Docling reads works. The default is `pdf,docx,pptx,xlsx,html,htm,md,txt`. Add `png,jpg,jpeg,tiff` to OCR images; an unknown extension fails at startup.
+
+Page numbers follow the format: PDF pages, one page per PowerPoint slide and per Excel sheet, one page per image. Word, HTML, Markdown and text files have no pages, so each is stored as a single page 1.
+
+Changing the list makes the next sync list the whole source once, so files of a newly added format are found; files that are already indexed are skipped by content hash. Removing a format doesn't remove documents already indexed in it.
 
 ### S3 / RustFS / MinIO
 

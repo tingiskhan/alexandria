@@ -16,7 +16,7 @@ MAX_LISTED = 500
 MAX_OUTPUT_CHARS = 40_000
 
 INSTRUCTIONS = """\
-Alexandria searches a private library of PDF documents (reports, papers, invoices, manuals).
+Alexandria searches a private library of documents (reports, papers, invoices, manuals, slides, notes).
 Use `search` to find passages, `get_pages` to read the full pages around a hit, and `list_documents`
 to see what is in the library. Always cite the document title and page numbers in your answers."""
 
@@ -32,7 +32,7 @@ def build_server(store: DocumentStore, embedder: Embedder) -> MCPServer:
         document_ids: list[int] | None = None,
         limit: Annotated[int, Field(ge=1, le=MAX_RESULTS)] = 10,
     ) -> str:
-        """Search the PDF library for passages relevant to `query`. Returns ranked excerpts.
+        """Search the library for passages relevant to `query`. Returns ranked excerpts.
 
         Combines meaning-based search with exact keyword matching, so both questions ("how did revenue
         develop?") and exact terms (names, codes, numbers) work. Keyword syntax: "quoted phrase", -exclude.
@@ -97,6 +97,7 @@ def build_server(store: DocumentStore, embedder: Embedder) -> MCPServer:
 
         Use it after `search` to read the context around a hit, to quote exactly, or to check a table.
         At most 20 pages per call; page numbers are 1-based and match the ones in search results.
+        Slides and spreadsheet sheets are pages; Word, HTML, Markdown and text files are a single page 1.
         Cite the document title and page numbers when you use what you read.
         """
         if last_page < first_page:

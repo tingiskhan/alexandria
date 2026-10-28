@@ -37,6 +37,7 @@ def pipeline(monkeypatch: pytest.MonkeyPatch) -> flows.Pipeline:
         embedder=FakeEmbedder(),
         store=InMemoryStore(),
         max_tokens=500,
+        formats=frozenset({"pdf"}),
     )
 
     monkeypatch.setattr(flows, "build_pipeline", lambda: pipeline)
@@ -110,7 +111,7 @@ def test_failed_listing_is_retried(pipeline: flows.Pipeline, monkeypatch: pytest
     assert pipeline.store.content_hash("/good.pdf") == "h1"
 
 
-def test_non_pdf_is_skipped_without_preparing(pipeline: flows.Pipeline) -> None:
+def test_other_formats_are_skipped_without_preparing(pipeline: flows.Pipeline) -> None:
     source = cast("FakeFileSource", pipeline.source)
     source.batches = [[FileChange(source_id="/notes.txt", path="/notes.txt", content_hash="h1")]]
 
@@ -131,6 +132,7 @@ def real_wiring(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     steps: list[str] = []
     monkeypatch.setenv("ALEXANDRIA_DATABASE_URL", "postgresql+psycopg://user:secret@db/alexandria")
     monkeypatch.setenv("ALEXANDRIA_CHUNK_MAX_TOKENS", "300")
+    monkeypatch.setenv("ALEXANDRIA_EXTRACT_FORMATS", "pdf,docx")
     source = FakeFileSource()
     monkeypatch.setattr(flows, "make_source", lambda: ConfiguredSource("s3:pdfs/", source))
     monkeypatch.setattr(flows, "make_engine", lambda url: steps.append(f"engine {url}") or "engine")
@@ -145,10 +147,12 @@ def test_build_pipeline_wires_settings_and_adapters(real_wiring: list[str]) -> N
     pipeline = flows.build_pipeline()
 
     assert real_wiring == ["engine postgresql+psycopg://user:secret@db/alexandria", "wait", "schema"]
-    assert pipeline.source_name == "s3:pdfs/"
+    assert pipeline.source_name == "s3:pdfs/|docx,pdf"  # a new format set starts from a full listing
     assert pipeline.max_tokens == 300
+    assert pipeline.formats == frozenset({"pdf", "docx"})
     assert pipeline.embedder.model_name == "BAAI/bge-m3"
     assert isinstance(pipeline.extractor, FakeExtractor)
+    assert pipeline.extractor.formats == frozenset({"pdf", "docx"})
 
 
 def test_build_pipeline_refuses_a_model_that_does_not_fit_the_schema(

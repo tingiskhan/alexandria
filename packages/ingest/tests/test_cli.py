@@ -24,16 +24,21 @@ def source_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(name, value)
 
 
-def test_check_source_lists_pdfs_from_s3(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_source_lists_the_files_to_ingest_from_s3(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALEXANDRIA_SOURCE_KIND", "s3")
-    objects = FakeObjectStore({"papers/a.pdf": "e1", "papers/notes.txt": "e2"})
+    monkeypatch.setenv("ALEXANDRIA_EXTRACT_FORMATS", "pdf,docx")
+    objects = FakeObjectStore(
+        {"papers/a.pdf": "e1", "papers/b.PDF": "e2", "papers/plan.docx": "e3", "papers/notes.txt": "e4"}
+    )
     monkeypatch.setattr(sources, "make_s3_bucket", lambda _settings: objects)
 
     result = CliRunner().invoke(cli.app, ["check-source"])
 
     assert result.exit_code == 0, result.output
-    assert "s3:pdfs/papers/: 2 files, 1 PDFs" in result.output
-    assert "/papers/a.pdf" in result.output
+    assert "s3:pdfs/papers/: 4 files, 3 to ingest" in result.output
+    assert "  1 docx, 2 pdf" in result.output
+    assert "/papers/plan.docx" in result.output
+    assert "/papers/notes.txt" not in result.output
 
 
 def test_check_source_reports_access_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -59,6 +64,16 @@ def test_check_source_reports_missing_settings(monkeypatch: pytest.MonkeyPatch) 
     assert result.exit_code == 2
     assert "Configuration is incomplete" in result.output
     assert "bucket" in result.output
+
+
+def test_check_source_reports_unknown_formats(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_SOURCE_KIND", "s3")
+    monkeypatch.setenv("ALEXANDRIA_EXTRACT_FORMATS", "pdf,pfd")
+
+    result = CliRunner().invoke(cli.app, ["check-source"])
+
+    assert result.exit_code == 2
+    assert "cannot read 'pfd'" in result.output
 
 
 def test_source_kind_is_required(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,13 +1,13 @@
 # Architecture
 
-Alexandria keeps a library of PDFs searchable for an LLM agent. It syncs PDFs from a file source, extracts them to per-page Markdown, chunks and embeds them, stores everything in Postgres, and serves search and page reads over MCP. The agent must be able to search one document or all of them, and read exact pages to cite.
+Alexandria keeps a library of documents searchable for an LLM agent. It syncs PDFs and other documents (Word, PowerPoint, Excel, HTML, Markdown, text, images) from a file source, extracts them to per-page Markdown, chunks and embeds them, stores everything in Postgres, and serves search and page reads over MCP. The agent must be able to search one document or all of them, and read exact pages to cite.
 
 ## Goals and non-goals
 
 **In scope**
 
 - Incremental sync of an S3 bucket prefix or a Dropbox folder: new, changed and deleted files.
-- PDF to Markdown, with OCR for scanned pages and table structure recognition.
+- Documents to Markdown, with OCR for scanned pages and table structure recognition.
 - Local embedding, on a GPU when there is one.
 - Hybrid search: vector similarity plus Postgres full-text search.
 - An MCP server with a small set of read-only tools.
@@ -72,6 +72,8 @@ Postgres with the `vector` extension, mapped with SQLAlchemy 2.0. The ORM classe
 
 A sync asks the source what changed since the cursor stored for it, and processes only those files, plus files that failed on earlier runs. It is idempotent: running it twice in a row does nothing the second time.
 
+The cursor is stored under the source's name plus the sorted list of formats to ingest (`s3:library/|docx,pdf`). A source only reports changed files, so without that, files of a newly added format, skipped before, would never come up again. A new key starts with a full listing, and content hashes keep indexed files from being processed again. The cost: on S3, a file deleted between the last sync and a change of formats is not noticed, because there is no previous listing to compare with.
+
 ### Sources
 
 A source implements `FileSource`: `changes(cursor)` returns the changed files and a new cursor, and `download(file_id)` returns a file's bytes. A source has two jobs: report every deletion, and give each file a hash that changes when its content does.
@@ -83,15 +85,15 @@ A source implements `FileSource`: `changes(cursor)` returns the changed files an
 
 Each change goes through up to three steps. They are separate functions so a scheduler can retry each one on its own:
 
-1. **Triage** (store only): a deletion removes the document with its pages and chunks; a file that isn't a `.pdf` is skipped; a file whose hash is already stored is skipped.
+1. **Triage** (store only): a deletion removes the document with its pages and chunks; a file whose extension isn't in `ALEXANDRIA_EXTRACT_FORMATS` is skipped; a file whose hash is already stored is skipped.
 2. **Prepare** (source, Docling, embedder): download, extract, chunk and embed. It writes nothing, so it's safe to retry.
 3. **Store**: upsert the document. Its pages and chunks are replaced in one transaction, so a search never sees half a document.
 
-If a file still fails after its retries, it is recorded with `status = failed` (and its old pages and chunks are removed, so search never serves stale content), and the run moves on. One bad PDF must not stop a sync. The cursor is saved at the end of the run, and failed files are retried on the next one. A failed deletion is the exception: it ends the run without saving the cursor, so the next run reports the deletion again.
+If a file still fails after its retries, it is recorded with `status = failed` (and its old pages and chunks are removed, so search never serves stale content), and the run moves on. One bad file must not stop a sync. The cursor is saved at the end of the run, and failed files are retried on the next one. A failed deletion is the exception: it ends the run without saving the cursor, so the next run reports the deletion again.
 
 ### Extraction
 
-`DoclingExtractor` converts a PDF with OCR and table structure recognition on, and exports Markdown per page, so page numbers survive for citations. Control characters, which PDFs with broken font encodings produce, are removed. Docling uses the GPU when there is one.
+`DoclingExtractor` converts a document with OCR and table structure recognition on, and exports Markdown per page, so page numbers survive for citations. The file name picks Docling's format. PowerPoint slides and Excel sheets become pages; formats without pages (Word, HTML, Markdown, text) are stored as a single page 1. Control characters, which PDFs with broken font encodings produce, are removed. Docling uses the GPU when there is one.
 
 ### Chunking
 

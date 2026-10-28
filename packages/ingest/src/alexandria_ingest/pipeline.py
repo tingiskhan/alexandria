@@ -10,7 +10,7 @@ One file goes through three steps, split by what they touch so a scheduler can r
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Set
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
@@ -22,7 +22,7 @@ from alexandria_ingest.chunk import chunk_pages, embedding_text
 log = logging.getLogger(__name__)
 
 Outcome = Literal["deleted", "skipped", "unchanged", "ingested"]
-"""What happened to a file: removed it, ignored it (not a PDF), found it already indexed, or indexed it."""
+"""What happened to a file: removed it, ignored it (not an ingested format), found it already indexed, or indexed it."""
 
 
 @dataclass(frozen=True)
@@ -33,12 +33,27 @@ class IndexedDocument:
     chunks: tuple[EmbeddedChunk, ...]
 
 
-def triage(change: FileChange, *, store: DocumentStore) -> Outcome | None:
-    """Handle what needs no download: deletions, non-PDFs and unchanged files. None means: prepare and store it."""
+def extension(path: str) -> str:
+    """The file's extension, lower-case and without the dot, as ExtractSettings.formats lists it."""
+    return PurePosixPath(path).suffix.lower().lstrip(".")
+
+
+def cursor_key(source_name: str, formats: Set[str]) -> str:
+    """The name a source's sync cursor is stored under.
+
+    Includes the formats, because a source only reports changed files: files of a newly added format were
+    skipped before and would never come up again. A new key starts with a full listing, and content hashes
+    keep files that are already indexed from being processed again.
+    """
+    return f"{source_name}|{','.join(sorted(formats))}"
+
+
+def triage(change: FileChange, *, store: DocumentStore, formats: Set[str]) -> Outcome | None:
+    """Handle what needs no download: deletions, other formats and unchanged files. None means: prepare and store it."""
     if change.deleted:
         store.delete_document(change.source_id)
         return "deleted"
-    if PurePosixPath(change.path).suffix.lower() != ".pdf":
+    if extension(change.path) not in formats:
         return "skipped"
     if change.content_hash is not None and store.content_hash(change.source_id) == change.content_hash:
         return "unchanged"
@@ -49,7 +64,7 @@ def prepare_file(
     change: FileChange, *, source: FileSource, extractor: Extractor, embedder: Embedder, max_tokens: int
 ) -> IndexedDocument:
     """Download → extract → chunk → embed. Writes nothing, so it is safe to retry."""
-    pages = extractor.extract(source.download(change.source_id))
+    pages = extractor.extract(source.download(change.source_id), PurePosixPath(change.path).name)
     document = Document(
         source_id=change.source_id,
         path=change.path,
@@ -86,9 +101,10 @@ def process_file(
     embedder: Embedder,
     store: DocumentStore,
     max_tokens: int,
+    formats: Set[str],
 ) -> Outcome:
     """Bring the store in line with one changed file: triage, then prepare and store it if needed."""
-    outcome = triage(change, store=store)
+    outcome = triage(change, store=store, formats=formats)
     if outcome is not None:
         return outcome
     indexed = prepare_file(change, source=source, extractor=extractor, embedder=embedder, max_tokens=max_tokens)
