@@ -3,10 +3,23 @@ name: CI
 on:
   push:
     branches: [main]
+    paths: &python-paths
+      - "**.py"
+      - "**/pyproject.toml"
+      - uv.lock
+      - .python-version
+      - "**/tests/data/**"
+      - .github/workflows/ci.yml
   pull_request:
+    paths: *python-paths
 
 permissions:
   contents: read
+
+# A new push to the same PR or branch cancels the run still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
