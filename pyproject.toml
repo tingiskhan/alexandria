@@ -1,0 +1,123 @@
+[project]
+name = "alexandria"
+version = "0.1.0"
+description = "Sync PDFs from S3 or Dropbox into Postgres (pgvector + full-text search) and search them from an LLM agent over MCP"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+dependencies = ["alexandria-core", "alexandria-embed", "alexandria-ingest", "alexandria-mcp", "alexandria-workflows"]
+
+[project.urls]
+Repository = "https://github.com/tingiskhan/alexandria"
+Issues = "https://github.com/tingiskhan/alexandria/issues"
+
+[project.optional-dependencies]
+# Pick the PyTorch build: `uv sync --extra cpu` or `uv sync --extra cu128`. Without either, torch comes from PyPI.
+cpu = ["torch>=2.7", "torchvision"]
+cu128 = ["torch>=2.7", "torchvision"]  # CUDA 12.8 or newer; needed for Blackwell (RTX 50xx) cards
+
+[tool.uv.workspace]
+members = ["packages/*", "workflows"]
+
+[tool.uv.sources]
+alexandria-core = { workspace = true }
+alexandria-embed = { workspace = true }
+alexandria-ingest = { workspace = true }
+alexandria-mcp = { workspace = true }
+alexandria-workflows = { workspace = true }
+# The PyTorch indexes have no macOS wheels, so macOS always gets PyPI's build (CPU and Apple MPS).
+torch = [
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform != 'darwin'" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform != 'darwin'" },
+]
+
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cu128" }]]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[dependency-groups]
+dev = ["ruff", "ty", "pytest", "pytest-cov", "testcontainers[postgres]"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = [".claude"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F",   # pycodestyle, pyflakes
+  "I",             # isort
+  "N",             # naming
+  "UP",            # pyupgrade
+  "B",             # bugbear
+  "A",             # shadowing builtins
+  "C4",            # comprehensions
+  "SIM",           # simplify
+  "RET",           # return
+  "PTH",           # pathlib
+  "ARG",           # unused arguments
+  "PT",            # pytest style
+  "TC",            # type-checking imports
+  "PL",            # pylint
+  "RUF",           # ruff-specific
+  "ERA",           # commented-out code
+  "S",             # bandit (security)
+  "ANN",           # annotations: ty checks types but does not require them
+  "D",             # docstrings
+]
+allowed-confusables = ["–"]  # en dash in page ranges ("pp. 41–42") is intentional
+ignore = [
+  "PLR0913",       # too many arguments: DI makes constructors wide
+  "PLR2004",       # magic values
+  "ANN401",        # Any: SDK clients without type hints are typed as Any on purpose
+  "D105",          # magic methods
+  "D107",          # __init__: the class docstring covers construction
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["alexandria_core", "alexandria_embed", "alexandria_ingest", "alexandria_mcp", "alexandria_workflows"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "PLR2004", "ARG", "D"]
+"conftest.py" = ["D"]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+include = ["packages", "workflows", "conftest.py"]
+
+[tool.coverage.run]
+source_pkgs = ["alexandria_core", "alexandria_embed", "alexandria_ingest", "alexandria_mcp", "alexandria_workflows"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
+
+[tool.pytest.ini_options]
+testpaths = ["packages", "workflows"]
+addopts = ["-m", "not gpu", "--import-mode=importlib"]
+consider_namespace_packages = true  # each package's tests/ is its own package (packages.<name>.tests)
+markers = [
+  "integration: needs Postgres (Docker)",
+  "gpu: needs CUDA",
+]

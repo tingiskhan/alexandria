@@ -1,0 +1,38 @@
+# Local services for trying Alexandria: cp .env.example .env, fill in the passwords, then docker compose up -d
+#   Postgres + pgvector  localhost:5432  ALEXANDRIA_DATABASE_URL
+#   RustFS S3 API        localhost:9000  ALEXANDRIA_S3_ENDPOINT_URL
+#   RustFS console       localhost:9001  http://localhost:9001/rustfs/console/, log in with the S3 access key and secret
+# Credentials come from .env (or the environment); compose refuses to start if one is missing.
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_USER: alexandria
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: alexandria
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "alexandria"]
+      interval: 5s
+      retries: 10
+
+  rustfs:
+    image: rustfs/rustfs:1.0.3
+    environment:
+      RUSTFS_ACCESS_KEY: ${ALEXANDRIA_S3_ACCESS_KEY_ID:?set ALEXANDRIA_S3_ACCESS_KEY_ID in .env}
+      RUSTFS_SECRET_KEY: ${ALEXANDRIA_S3_SECRET_ACCESS_KEY:?set ALEXANDRIA_S3_SECRET_ACCESS_KEY in .env}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - rustfs:/data
+
+volumes:
+  postgres:
+  rustfs:
