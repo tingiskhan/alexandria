@@ -5,7 +5,7 @@
 # Credentials come from .env (or the environment); compose refuses to start if one is missing.
 services:
   postgres:
-    image: pgvector/pgvector:0.8.1-pg17
+    image: pgvector/pgvector:0.8.7-pg17
     environment:
       POSTGRES_USER: alexandria
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -20,7 +20,7 @@ services:
       retries: 10
 
   rustfs:
-    image: rustfs/rustfs:1.0.3
+    image: rustfs/rustfs:1.0.4
     environment:
       RUSTFS_ACCESS_KEY: ${ALEXANDRIA_S3_ACCESS_KEY_ID:?set ALEXANDRIA_S3_ACCESS_KEY_ID in .env}
       RUSTFS_SECRET_KEY: ${ALEXANDRIA_S3_SECRET_ACCESS_KEY:?set ALEXANDRIA_S3_SECRET_ACCESS_KEY in .env}
