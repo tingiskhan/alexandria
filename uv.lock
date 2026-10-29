@@ -170,7 +170,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pgvector", specifier = ">=0.4" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
