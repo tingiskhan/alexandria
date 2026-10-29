@@ -4,7 +4,7 @@ Turns documents (PDF, Word, PowerPoint, Excel, HTML, Markdown, text, images) fro
 
 ```text
 FileSource.changes ──► download ──► DoclingExtractor ──► chunk_pages ──► Embedder ──► DocumentStore.upsert_document
-(S3 / Dropbox)                      per-page Markdown    heading-aware    BGE-M3       pages + chunks, one transaction
+(S3 / Dropbox / SharePoint)         per-page Markdown    heading-aware    BGE-M3       pages + chunks, one transaction
 ```
 
 This package holds the steps only. Scheduling, retries and the composition root are in [`alexandria-workflows`](../../workflows), which is the only code that imports Prefect. The protocols the steps depend on (`FileSource`, `Extractor`, `Embedder`, `DocumentStore`) live in `alexandria_core.protocols`.
@@ -56,6 +56,7 @@ Each change goes through up to three steps. `process_file` runs them in a row. T
 | --- | --- | --- | --- |
 | `s3` | `sources/s3.py` | Lists the prefix each run and compares it with the previous listing, which is stored as the cursor (`{key: etag}`) | Object key |
 | `dropbox` | `sources/dropbox.py` | Dropbox's own cursor (`files/list_folder/continue`), with a full listing if the cursor is reset | `path_lower` (Dropbox reports deletions only by path) |
+| `sharepoint` | `sources/sharepoint.py` | Microsoft Graph's delta feed on the drive, plus an id → (parent, name) map in the cursor to rebuild the paths the feed leaves out; a full listing if the delta link expires | Lower-cased path |
 
 The settings each source needs are listed in the [root README](../../README.md#configuration) and in [`.env.example`](../../.env.example).
 
@@ -77,6 +78,7 @@ A source has two jobs: report every deletion and give each file a stable content
 ```bash
 uv run --extra cpu alexandria-ingest check-source             # check access to the configured source and list the files to ingest
 uv run --extra cpu alexandria-ingest auth --app-key <key>     # Dropbox only: one-off consent, prints the refresh token
+uv run --extra cpu alexandria-ingest sharepoint-libraries     # SharePoint only: the site's document libraries and drive ids
 ```
 
 ## Tests

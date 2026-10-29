@@ -3,6 +3,7 @@
 from collections import Counter
 from typing import Annotated
 
+import httpx
 import typer
 from botocore.exceptions import BotoCoreError, ClientError
 from dropbox.exceptions import DropboxException
@@ -12,6 +13,7 @@ from pydantic import ValidationError
 from alexandria_ingest.pipeline import extension
 from alexandria_ingest.settings import ExtractSettings
 from alexandria_ingest.sources import make_source
+from alexandria_ingest.sources.sharepoint import GraphError, SharePointSettings, make_sharepoint_client
 
 app = typer.Typer(name="alexandria-ingest", no_args_is_help=True)
 
@@ -45,7 +47,7 @@ def check_source() -> None:
         raise typer.Exit(2) from error
     try:
         changes, _ = configured.source.changes(None)
-    except (DropboxException, BotoCoreError, ClientError) as error:
+    except (DropboxException, BotoCoreError, ClientError, GraphError, httpx.HTTPError) as error:
         typer.echo(f"{configured.name}: access failed: {error}", err=True)
         raise typer.Exit(1) from error
 
@@ -58,3 +60,20 @@ def check_source() -> None:
         typer.echo(f"  {path}")
     if len(ingested) > 10:
         typer.echo(f"  … and {len(ingested) - 10} more")
+
+
+@app.command()
+def sharepoint_libraries() -> None:
+    """List the document libraries of ALEXANDRIA_SHAREPOINT_SITE with their drive ids."""
+    try:
+        settings = SharePointSettings()
+    except ValidationError as error:
+        typer.echo(f"Configuration is incomplete; see .env.example.\n{error}", err=True)
+        raise typer.Exit(2) from error
+    try:
+        libraries = make_sharepoint_client(settings).libraries()
+    except (GraphError, httpx.HTTPError) as error:
+        typer.echo(f"{settings.site}: access failed: {error}", err=True)
+        raise typer.Exit(1) from error
+    for name, drive_id in libraries:
+        typer.echo(f"{name}\t{drive_id}")

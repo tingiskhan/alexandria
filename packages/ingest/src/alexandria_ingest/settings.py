@@ -65,4 +65,4 @@ class SourceSettings(BaseSettings):
 
     model_config = settings_config("ALEXANDRIA_SOURCE_")
 
-    kind: Literal["dropbox", "s3"]  # which backend in alexandria_ingest.sources to sync from
+    kind: Literal["dropbox", "s3", "sharepoint"]  # which backend in alexandria_ingest.sources to sync from

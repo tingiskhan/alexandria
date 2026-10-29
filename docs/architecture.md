@@ -6,7 +6,7 @@ Alexandria keeps a library of documents searchable for an LLM agent. It syncs PD
 
 **In scope**
 
-- Incremental sync of an S3 bucket prefix or a Dropbox folder: new, changed and deleted files.
+- Incremental sync of an S3 bucket prefix, a Dropbox folder, or a SharePoint/OneDrive for Business library: new, changed and deleted files.
 - Documents to Markdown, with OCR for scanned pages and table structure recognition.
 - Local embedding, on a GPU when there is one.
 - Hybrid search: vector similarity plus Postgres full-text search.
@@ -80,6 +80,7 @@ A source implements `FileSource`: `changes(cursor)` returns the changed files an
 
 - **S3** (`S3Source`) has no change feed, so each sync lists the prefix and compares it with the previous listing, which is the cursor (`{key: etag}` as JSON). Works with AWS, RustFS, MinIO and anything else that speaks S3, using path-style addressing.
 - **Dropbox** (`DropboxSource`) uses Dropbox's own cursor (`files/list_folder/continue`). If Dropbox resets the cursor, it falls back to a full listing, and content hashes keep unchanged files from being processed again. Files are keyed by `path_lower`, because deletions only carry a path. Authentication uses an offline refresh token from a one-off PKCE flow (`alexandria-ingest auth`), with no app secret.
+- **SharePoint / OneDrive for Business** (`SharePointSource`) uses Microsoft Graph's delta feed on a drive. In these drives the feed carries no paths, and renaming or deleting a folder doesn't report the files in it, so the cursor holds the delta link plus every item's parent and name by id (`{"delta": link, "items": {id: [parent, name, folder, hash]}}`). Each run applies the delta to that map, rebuilds the paths and diffs them with the previous run: a moved file becomes a deletion of its old path and a change at the new one, and the files of a deleted folder become deletions. Files are keyed by lower-cased path, like Dropbox, so the store needs nothing source-specific. An expired delta link (`410 resyncRequired`) restarts the listing, and the same diff keeps unchanged files from being reported. The hash is `quickXorHash`, or the `cTag` when there is none. Sign-in is app-only with a client secret via azure-identity; requests are plain httpx, retried on 429/503/504 after `Retry-After`. Microsoft's Graph SDK isn't used: it is async-only and very large, and this source makes three kinds of request.
 
 ### One file
 
@@ -138,7 +139,7 @@ pytest, with hand-written fakes instead of a mocking library. Because the fakes 
 | --- | --- | --- |
 | Chunking | Pure function, Markdown fixtures | none |
 | Pipeline | Fake source, extractor, embedder and in-memory store | none |
-| Sources | Fake SDK clients; S3 also against a RustFS container | `integration` for RustFS |
+| Sources | Fake SDK clients; S3 also against a RustFS container; SharePoint's HTTP client against `httpx.MockTransport` | `integration` for RustFS |
 | Store and search | Real Postgres with pgvector, via testcontainers | `integration` |
 | MCP server | `build_server` with fakes, tools called in-process | none |
 | Workflows | The real flows with fakes, inside a temporary Prefect API | none |

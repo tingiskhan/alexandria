@@ -1,7 +1,7 @@
 [project]
 name = "alexandria-ingest"
 version = "0.1.0"
-description = "Document sources, Docling extraction, chunking and the ingest pipeline for Alexandria"
+description = "Document sources (S3, Dropbox, SharePoint), Docling extraction, chunking and the ingest pipeline for Alexandria"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
@@ -12,6 +12,8 @@ dependencies = [
     "docling>=2.50",
     "typer>=0.26",
     "boto3>=1.40",
+    "azure-identity>=1.25",
+    "httpx>=0.28",
 ]
 
 [build-system]

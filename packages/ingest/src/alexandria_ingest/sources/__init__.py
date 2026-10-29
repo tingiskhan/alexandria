@@ -11,6 +11,7 @@ from alexandria_core.protocols import FileSource
 from alexandria_ingest.settings import SourceSettings
 from alexandria_ingest.sources.dropbox import DropboxSettings, DropboxSource, make_dropbox_client
 from alexandria_ingest.sources.s3 import S3Settings, S3Source, make_s3_bucket
+from alexandria_ingest.sources.sharepoint import SharePointSettings, SharePointSource, make_sharepoint_client
 
 
 @dataclass(frozen=True)
@@ -32,3 +33,10 @@ def make_source() -> ConfiguredSource:
         case "s3":
             s3 = S3Settings()
             return ConfiguredSource(f"s3:{s3.bucket}/{s3.prefix}", S3Source(make_s3_bucket(s3), s3.prefix))
+        case "sharepoint":
+            sharepoint = SharePointSettings()
+            drive = sharepoint.drive_id or f"{sharepoint.site}/{sharepoint.library}"
+            return ConfiguredSource(
+                f"sharepoint:{drive}{sharepoint.path or '/'}",
+                SharePointSource(make_sharepoint_client(sharepoint), sharepoint.path),
+            )
