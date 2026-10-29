@@ -131,6 +131,14 @@ One server, built with the official `mcp` SDK, exposing three read-only tools: `
 - **Thin layer:** each tool validates its arguments, calls the store and the embedder, and formats the result. `build_server(store, embedder)` takes any implementations of the protocols, so tests pass fakes.
 - **Transports:** stdio for local clients such as Claude Desktop. Streamable HTTP binds to localhost and has no authentication; exposing it needs an authenticating proxy.
 
+## Deployment
+
+One Docker image (`Dockerfile`) holds all of Alexandria; the command picks the role: `alexandria-workflows serve` (the default), `alexandria-mcp`, or `prefect server start`. It's built in two variants from the root project's extras, `cu128` (tag `<version>`) and `cpu` (tag `<version>-cpu`). uv applies those extras only to the workspace root, so a smaller MCP-only image can't select the CPU PyTorch build from the lockfile, which is why every role shares the image. CUDA comes from the PyTorch wheels, so the base is `python:3.13-slim` and the host needs only the driver and the NVIDIA Container Toolkit.
+
+Models aren't baked in: they download on first start into `HF_HOME` (`/models`), a volume shared by the worker and the MCP server. The Prefect server keeps its SQLite database in `PREFECT_HOME` (`/data/prefect`), another volume.
+
+`deploy/compose.yaml` and `deploy/.env.example` are attached to every GitHub release. The release workflow (`.github/workflows/release.yml`) pins the compose file's image tag to the release, pushes both variants to GHCR, and lets GitHub generate the release notes from the merged pull requests (grouped by `.github/release.yml`). A test in `workflows/tests/test_deploy.py` checks that every setting in `deploy/.env.example` is documented.
+
 ## Testing
 
 pytest, with hand-written fakes instead of a mocking library. Because the fakes satisfy the protocols, the type checker keeps them in sync with the real code.

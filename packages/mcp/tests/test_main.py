@@ -13,9 +13,11 @@ class FakeServer:
     store: Any
     embedder: Any
     transport: str | None = None
+    options: dict[str, Any] | None = None
 
-    def run(self, transport: str) -> None:
+    def run(self, transport: str, **options: Any) -> None:
         self.transport = transport
+        self.options = options
 
 
 class FakeEmbedder:
@@ -45,8 +47,18 @@ def test_runs_the_server_with_a_cpu_embedder(servers: list[FakeServer]) -> None:
 
     [server] = servers
     assert server.transport == "streamable-http"
+    assert server.options == {"host": "127.0.0.1", "port": 8000}  # localhost only by default
     assert server.embedder.device == "cpu"
     assert server.embedder.model_name == "BAAI/bge-m3"
+
+
+def test_http_listens_where_the_settings_say(servers: list[FakeServer], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_MCP_HOST", "0.0.0.0")  # noqa: S104 - as in a container
+    monkeypatch.setenv("ALEXANDRIA_MCP_PORT", "9000")
+
+    main(Transport.HTTP)
+
+    assert servers[0].options == {"host": "0.0.0.0", "port": 9000}  # noqa: S104
 
 
 def test_refuses_a_model_that_does_not_fit_the_schema(
@@ -67,4 +79,4 @@ def test_command_line_defaults_to_stdio(servers: list[FakeServer], monkeypatch: 
         run()
 
     assert exit_info.value.code == 0
-    assert [s.transport for s in servers] == ["stdio"]
+    assert [(s.transport, s.options) for s in servers] == [("stdio", {})]

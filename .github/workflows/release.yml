@@ -1,0 +1,142 @@
+name: Release
+
+# On a v* tag: build both image variants, push them to GHCR, and publish a GitHub release with the compose file
+# and the example .env. On pull requests that touch the image: build both variants without pushing, and
+# smoke-test the CPU one.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - deploy/**
+      - uv.lock
+      - "**/pyproject.toml"
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - torch: cu128
+            suffix: ""
+          - torch: cpu
+            suffix: -cpu
+    steps:
+      - uses: actions/checkout@v7
+
+      # The CUDA build needs more room than a runner has free by default.
+      - name: Free disk space
+        if: matrix.torch == 'cu128'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 1.2.3, 1.2 and latest (or pr-N on pull requests), with -cpu appended for the CPU variant.
+      # Pre-release tags (v1.2.3-rc.1) get only their exact version.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=auto
+            suffix=${{ matrix.suffix }},onlatest=true
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=pr
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: TORCH=${{ matrix.torch }}
+          push: ${{ github.event_name == 'push' }}
+          load: ${{ github.event_name == 'pull_request' && matrix.torch == 'cpu' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The CUDA layers alone would fill most of the 10 GB Actions cache, so only the CPU build caches.
+          cache-from: type=gha,scope=${{ matrix.torch }}
+          cache-to: ${{ matrix.torch == 'cpu' && 'type=gha,mode=max,scope=cpu' || '' }}
+
+      - name: Smoke-test the image
+        if: github.event_name == 'pull_request' && matrix.torch == 'cpu'
+        env:
+          TAG: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+        run: |
+          for command in alexandria-ingest alexandria-mcp alexandria-workflows prefect; do
+            docker run --rm "$TAG" "$command" --help > /dev/null
+          done
+          docker run --rm "$TAG" python -c "
+          from alexandria_ingest.extract import DoclingExtractor
+          pages = DoclingExtractor({'md'}).extract(b'# Hello\n\nfrom the image', 'a.md')
+          assert pages[0].markdown == '# Hello\n\nfrom the image', pages
+          print('ok:', pages)
+          "
+
+  compose:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check deploy/compose.yaml with every profile
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          POSTGRES_PASSWORD=x ALEXANDRIA_S3_SECRET_ACCESS_KEY=x COMPOSE_PROFILES=gpu,cpu,rustfs \
+            docker compose config --quiet
+
+  release:
+    needs: image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # The downloaded compose file then runs this release's images unless ALEXANDRIA_VERSION says otherwise.
+      - name: Pin the image version in compose.yaml
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed -i "s/\${ALEXANDRIA_VERSION:-latest}/\${ALEXANDRIA_VERSION:-$version}/g" deploy/compose.yaml
+          grep -q "ALEXANDRIA_VERSION:-$version}" deploy/compose.yaml
+          ! grep -q "ALEXANDRIA_VERSION:-latest" deploy/compose.yaml
+
+      # GitHub renames assets whose names start with a dot, so the example .env is published as env.example.
+      # The notes list the pull requests merged since the previous tag, grouped by .github/release.yml.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp deploy/.env.example env.example
+          prerelease=""
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" deploy/compose.yaml env.example \
+            --title "$GITHUB_REF_NAME" --generate-notes $prerelease

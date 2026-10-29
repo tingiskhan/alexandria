@@ -9,7 +9,7 @@ Runs the [ingest pipeline](../packages/ingest/README.md) with [Prefect](https://
 | `sync` | Ingests what changed in the configured source since the last run, plus files that failed before. Returns the number of files that still failed. |
 | `reindex` | Re-chunks and re-embeds every stored document from its stored pages, e.g. after changing the embedding model. Does not touch the source. |
 
-Neither flow has a schedule. Start them from the Prefect UI, with `prefect deployment run sync/sync`, or from an automation or webhook you set up in Prefect. Each deployment has a concurrency limit of 1, so a run that is started while another is still going waits for it to finish instead of competing for the GPU and the sync cursor.
+`sync` runs every `ALEXANDRIA_SYNC_INTERVAL` when that is set (`WorkflowSettings` in `settings.py`: seconds, `30m`, `1h`, `1d` or ISO 8601). Otherwise, and always for `reindex`, start runs from the Prefect UI, with `prefect deployment run sync/sync`, or from an automation or webhook you set up in Prefect. Each deployment has a concurrency limit of 1, so a run that is started while another is still going waits for it to finish instead of competing for the GPU and the sync cursor.
 
 `build_pipeline()` is the composition root. It loads all settings first, so missing configuration fails before any work starts. Then it waits for the database, creates the schema if needed, loads Docling and the embedding model, and checks that the model's dimension matches the schema.
 
@@ -35,6 +35,10 @@ export PREFECT_API_URL=http://<prefect-server>:4200/api   # or run `uv run prefe
 export PREFECT_LOGGING_EXTRA_LOGGERS=alexandria_ingest     # show pipeline logs in the Prefect UI
 uv run --extra cu128 alexandria-workflows serve
 ```
+
+The Docker image runs the same command by default, and `deploy/compose.yaml` runs the Prefect server from the same image, so the client and server versions always match. See [Run with Docker](../README.md#run-with-docker).
+
+The workflows package caps SQLAlchemy below 2.1: Prefect 3.9's scheduler fails on 2.1 ("Can't evaluate bulk DML statement") and then creates no scheduled runs, while manual runs keep working. Lift the cap once Prefect supports 2.1.
 
 ## Tests
 

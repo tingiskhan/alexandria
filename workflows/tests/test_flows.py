@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import timedelta
 from typing import Any, cast
 
 import pytest
@@ -164,12 +165,27 @@ def test_build_pipeline_refuses_a_model_that_does_not_fit_the_schema(
         flows.build_pipeline()
 
 
-def test_serve_runs_both_deployments_one_run_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+def serve(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     served: list[Any] = []
     monkeypatch.setattr(flows, "serve", lambda *deployments: served.extend(deployments))
-
     flows.serve_command()
+    return served
+
+
+def test_serve_runs_both_deployments_one_run_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALEXANDRIA_SYNC_INTERVAL", raising=False)
+
+    served = serve(monkeypatch)
 
     assert [d.name for d in served] == ["sync", "reindex"]
     assert all(d.schedules == [] for d in served)
     assert all(d.concurrency_limit == 1 for d in served)
+
+
+def test_an_interval_schedules_sync_but_not_reindex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_SYNC_INTERVAL", "30m")
+
+    sync, reindex = serve(monkeypatch)
+
+    assert [s.schedule.interval for s in sync.schedules] == [timedelta(minutes=30)]
+    assert reindex.schedules == []

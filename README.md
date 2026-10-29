@@ -29,7 +29,28 @@ It's built for one person's or one team's library on a home server or workstatio
 
 How the pieces fit together, and why, is in [docs/architecture.md](docs/architecture.md).
 
-## Quick start
+## Run with Docker
+
+You need Docker with Compose. Nothing else: no clone, no Python. For ingest on an NVIDIA GPU, also install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (on Windows, Docker Desktop with the WSL 2 backend provides GPU support).
+
+```bash
+mkdir alexandria && cd alexandria
+curl -LO https://github.com/tingiskhan/alexandria/releases/latest/download/compose.yaml
+curl -L -o .env https://github.com/tingiskhan/alexandria/releases/latest/download/env.example
+# edit .env: POSTGRES_PASSWORD, COMPOSE_PROFILES (gpu or cpu), and your source (see Sources below)
+docker compose up -d
+```
+
+This starts Postgres with pgvector, a Prefect server, the ingest worker and the MCP server, all from the image `ghcr.io/tingiskhan/alexandria`. It comes in two variants: `<version>` with CUDA 12.8 PyTorch for the `gpu` worker, and `<version>-cpu`, which the `cpu` worker, the MCP server and the Prefect server use. The first start downloads the embedding model and Docling's models (a few GB) into the `models` volume.
+
+- **Syncs** run every `ALEXANDRIA_SYNC_INTERVAL` (`1h` in the example `.env`). Follow them, or start one by hand, in the Prefect UI at <http://localhost:4200>.
+- **Check the source** before the first sync: `docker compose exec worker-gpu alexandria-ingest check-source` (or `worker-cpu`).
+- **Try it without your own storage:** add `rustfs` to `COMPOSE_PROFILES` and set `ALEXANDRIA_S3_SECRET_ACCESS_KEY`. Then create the bucket `library` in the RustFS console at <http://localhost:9001> and upload a few documents.
+- **Connect an agent:** see [Connect Claude](#connect-claude).
+
+The Prefect UI and the MCP server are published on localhost only, and neither has authentication; see [SECURITY.md](SECURITY.md).
+
+## Run from source
 
 You need [uv](https://docs.astral.sh/uv/), Python 3.13, and Docker (or your own Postgres with pgvector 0.8 or newer, and your own S3 store or Dropbox).
 
@@ -51,7 +72,7 @@ Open the RustFS console at <http://localhost:9001/rustfs/console/>, log in with 
 uv run --extra cpu alexandria-ingest check-source
 ```
 
-Then [run a sync](#ingest) and [connect an agent](#mcp-server). To sync from Dropbox or your own S3 store instead, change the source settings in `.env` (see [Sources](#sources)).
+Then [run a sync](#ingest) and [connect an agent](#connect-claude). To sync from Dropbox or your own S3 store instead, change the source settings in `.env` (see [Sources](#sources)).
 
 ### Choosing a PyTorch build
 
@@ -105,6 +126,9 @@ Secrets are `SecretStr`, so they never appear in logs or reprs. An empty value (
 | `ALEXANDRIA_EMBEDDING_BATCH_SIZE` | `EmbeddingSettings` | no (`32`) | workflows | |
 | `ALEXANDRIA_CHUNK_MAX_TOKENS` | `ChunkSettings` (ingest) | no (`500`) | workflows | |
 | `ALEXANDRIA_EXTRACT_FORMATS` | `ExtractSettings` (ingest) | no (`pdf,docx,pptx,xlsx,html,htm,md,txt`) | workflows | File extensions to ingest, comma-separated; see [File formats](#file-formats) |
+| `ALEXANDRIA_SYNC_INTERVAL` | `WorkflowSettings` (workflows) | no (none) | workflows | Run `sync` this often: seconds, `30m`, `1h`, `1d` or ISO 8601 (`PT1H`); unset means runs only start by hand |
+| `ALEXANDRIA_MCP_HOST` | `McpSettings` (mcp) | no (`127.0.0.1`) | MCP | Where `--transport streamable-http` listens; the Docker image's compose file sets `0.0.0.0` inside the container |
+| `ALEXANDRIA_MCP_PORT` | `McpSettings` | no (`8000`) | MCP | |
 
 To add settings for a new component, define a `BaseSettings` subclass in its package with `model_config = settings_config("ALEXANDRIA_<COMPONENT>_")` from `alexandria_core.settings`, and load it in the entry points that use it.
 
@@ -179,7 +203,7 @@ export PREFECT_LOGGING_EXTRA_LOGGERS=alexandria_ingest     # show pipeline logs 
 uv run --extra cu128 alexandria-workflows serve
 ```
 
-This serves two deployments, `sync/sync` and `reindex/reindex`. Neither has a schedule: start a run from the Prefect UI, with `uv run --extra cu128 prefect deployment run sync/sync`, or from a Prefect automation or webhook. Each deployment runs one flow run at a time; a run started while another is going waits for it to finish.
+This serves two deployments, `sync/sync` and `reindex/reindex`. With `ALEXANDRIA_SYNC_INTERVAL` set, `sync` runs on that interval; otherwise, and always for `reindex`, start a run from the Prefect UI, with `uv run --extra cu128 prefect deployment run sync/sync`, or from a Prefect automation or webhook. Each deployment runs one flow run at a time; a run started while another is going waits for it to finish.
 
 - `sync` ingests what changed in the source since the last run, plus files that failed before. The first run creates the database tables.
 - `reindex` re-chunks and re-embeds every stored document from its stored pages, without touching the source. Run it after changing the embedding model or the chunk size.
@@ -192,9 +216,36 @@ Within a run, the listing and each file's steps (triage, prepare, store) are sep
 uv run --extra cpu alexandria-mcp --transport stdio
 ```
 
-It loads the embedding model on the CPU at startup, which takes a few seconds, and only reads from the database. `--transport streamable-http` serves on `127.0.0.1:8000` **without authentication**; don't expose it beyond localhost without an authenticating proxy in front. The tools are described in [alexandria-mcp](packages/mcp/README.md).
+It loads the embedding model on the CPU at startup, which takes a few seconds, and only reads from the database. `--transport streamable-http` serves on `127.0.0.1:8000` (`ALEXANDRIA_MCP_HOST`, `ALEXANDRIA_MCP_PORT`) **without authentication**; don't expose it beyond localhost without an authenticating proxy in front. The tools are described in [alexandria-mcp](packages/mcp/README.md).
 
-### Claude Desktop
+## Connect Claude
+
+### With Docker
+
+The compose file runs the MCP server over HTTP on <http://localhost:8000/mcp>.
+
+**Claude Code** connects to it directly:
+
+```bash
+claude mcp add --transport http alexandria http://localhost:8000/mcp
+```
+
+**Claude Desktop** starts its own stdio server in the running container, which already has the settings and the model cache. Add this to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "alexandria": {
+      "command": "docker",
+      "args": ["exec", "-i", "alexandria-mcp-1", "alexandria-mcp", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+Each session loads the embedding model first, which takes a few seconds.
+
+### From source
 
 Add this to `claude_desktop_config.json`:
 
@@ -226,7 +277,9 @@ If the same checkout also runs ingest on the GPU, use `--extra cu128` here too, 
 
 ## Upgrading
 
-Alexandria has no database migrations yet. The schema is created on the first sync, and existing tables are never altered. Until migrations exist, a release that changes the schema will say so in the [changelog](CHANGELOG.md), and upgrading means dropping the tables (`documents`, `pages`, `chunks`, `sync_state`) and syncing again.
+With Docker, the downloaded `compose.yaml` pins the release it came from. To upgrade, read the [release notes](https://github.com/tingiskhan/alexandria/releases), download the new release's `compose.yaml` (or set `ALEXANDRIA_VERSION` in `.env`), and run `docker compose up -d`.
+
+Alexandria has no database migrations yet. The schema is created on the first sync, and existing tables are never altered. Until migrations exist, a release that changes the schema will say so in its [release notes](https://github.com/tingiskhan/alexandria/releases), and upgrading means dropping the tables (`documents`, `pages`, `chunks`, `sync_state`) and syncing again.
 
 ## Development
 

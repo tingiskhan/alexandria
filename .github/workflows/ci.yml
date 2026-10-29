@@ -9,6 +9,8 @@ on:
       - uv.lock
       - .python-version
       - "**/tests/data/**"
+      - .env.example
+      - deploy/**  # tests check that its settings are documented
       - .github/workflows/ci.yml
   pull_request:
     paths: *python-paths

@@ -28,6 +28,7 @@ from alexandria_ingest.pipeline import (
 )
 from alexandria_ingest.settings import ChunkSettings, ExtractSettings
 from alexandria_ingest.sources import make_source
+from alexandria_workflows.settings import WorkflowSettings
 
 if TYPE_CHECKING:
     from prefect.deployments.runner import RunnerDeployment
@@ -153,10 +154,15 @@ def main() -> None:
 
 @app.command(name="serve")
 def serve_command() -> None:
-    """Serve the sync and reindex deployments. Neither has a schedule; start runs from Prefect."""
+    """Serve the sync and reindex deployments.
+
+    `sync` runs every ALEXANDRIA_SYNC_INTERVAL, if that is set. Otherwise, and always for `reindex`, start runs
+    from Prefect.
+    """
+    interval = WorkflowSettings().interval
     # One run at a time per deployment: overlapping syncs would compete for the GPU and race on the cursor.
     # to_deployment returns a coroutine only when called from async code; here it is called synchronously.
     serve(
-        cast("RunnerDeployment", sync_flow.to_deployment(name="sync", concurrency_limit=1)),
+        cast("RunnerDeployment", sync_flow.to_deployment(name="sync", concurrency_limit=1, interval=interval)),
         cast("RunnerDeployment", reindex_flow.to_deployment(name="reindex", concurrency_limit=1)),
     )

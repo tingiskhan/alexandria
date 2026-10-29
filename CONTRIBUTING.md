@@ -38,6 +38,6 @@ To add a file source, follow [Adding a source](packages/ingest/README.md#adding-
 
 ## Commits and pull requests
 
-Keep each pull request to one change, with tests, and explain why the change is needed as well as what it does. Add a line under "Unreleased" in [CHANGELOG.md](CHANGELOG.md) for anything a user would notice.
+Keep each pull request to one change, with tests, and explain why the change is needed as well as what it does. Release notes are generated from the titles of merged pull requests, so write the title for a user ("Add a SharePoint source", not "Refactor sources"). If a change needs action when upgrading, such as a schema change, a new required setting or a full re-listing on the first sync, add the `breaking` label and say what to do in the description.
 
 By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).
