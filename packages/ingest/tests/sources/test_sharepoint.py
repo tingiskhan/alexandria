@@ -15,7 +15,6 @@ from azure.core.exceptions import ClientAuthenticationError
 from pydantic import ValidationError
 
 from alexandria_core.models import FileChange
-from alexandria_ingest.sources import sharepoint
 from alexandria_ingest.sources.sharepoint import (
     GraphError,
     GraphHttpClient,
@@ -23,6 +22,7 @@ from alexandria_ingest.sources.sharepoint import (
     SharePointSettings,
     SharePointSource,
 )
+from alexandria_ingest.sources.sharepoint import client as graph_client
 
 ROOT = {"id": "root", "name": "root", "root": {}, "folder": {"childCount": 1}}
 
@@ -285,7 +285,7 @@ def client(server: FakeGraphServer, credential: FakeCredential | None = None, **
 @pytest.fixture(autouse=True)
 def no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     slept: list[float] = []
-    monkeypatch.setattr(sharepoint.time, "sleep", slept.append)
+    monkeypatch.setattr(graph_client.time, "sleep", slept.append)
     return slept
 
 
@@ -396,7 +396,7 @@ def test_download_quotes_the_path_and_follows_the_redirect_without_the_token() -
 
 
 def test_the_real_client_signs_in_with_the_app_secret_and_follows_redirects() -> None:
-    graph = sharepoint.make_sharepoint_client(settings())
+    graph = graph_client.make_sharepoint_client(settings())
 
-    assert isinstance(graph._credential, sharepoint.ClientSecretCredential)
+    assert isinstance(graph._credential, graph_client.ClientSecretCredential)
     assert graph._http.follow_redirects

@@ -16,7 +16,7 @@ This package holds the steps only. Scheduling, retries and the composition root 
 | `pipeline.py` | The steps for one file (`triage`, `prepare_file`, `store_document`, or all three via `process_file`), `sync_changes` for a whole sync, and `reindex_document` to re-embed what is already stored. Every dependency is a keyword argument. |
 | `extract.py` | `DoclingExtractor`: document bytes to one Markdown string per page, with OCR for scanned pages and images and table structure recognition. The file name picks the format; formats without pages (Word, HTML, Markdown, text) come out as one page. Uses the GPU when one is available. |
 | `chunk.py` | `chunk_pages` and `embedding_text`. Pure functions, no I/O. |
-| `sources/` | One module per file source, plus `make_source()`, which builds the configured one. |
+| `sources/` | One package per file source (settings, protocols, client, source), plus `make_source()`, which builds the configured one. |
 | `settings.py` | `ChunkSettings`, `ExtractSettings` (which file extensions to ingest) and `SourceSettings`. Each source's settings sit next to the source itself. |
 | `cli.py` | The `alexandria-ingest` command. |
 
@@ -54,20 +54,22 @@ Each change goes through up to three steps. `process_file` runs them in a row. T
 
 | Kind | Module | Change detection | `source_id` |
 | --- | --- | --- | --- |
-| `s3` | `sources/s3.py` | Lists the prefix each run and compares it with the previous listing, which is stored as the cursor (`{key: etag}`) | Object key |
-| `dropbox` | `sources/dropbox.py` | Dropbox's own cursor (`files/list_folder/continue`), with a full listing if the cursor is reset | `path_lower` (Dropbox reports deletions only by path) |
-| `sharepoint` | `sources/sharepoint.py` | Microsoft Graph's delta feed on the drive, plus an id → (parent, name) map in the cursor to rebuild the paths the feed leaves out; a full listing if the delta link expires | Lower-cased path |
+| `s3` | `sources/s3/` | Lists the prefix each run and compares it with the previous listing, which is stored as the cursor (`{key: etag}`) | Object key |
+| `dropbox` | `sources/dropbox/` | Dropbox's own cursor (`files/list_folder/continue`), with a full listing if the cursor is reset | `path_lower` (Dropbox reports deletions only by path) |
+| `sharepoint` | `sources/sharepoint/` | Microsoft Graph's delta feed on the drive, plus an id → (parent, name) map in the cursor to rebuild the paths the feed leaves out; a full listing if the delta link expires | Lower-cased path |
 
 The settings each source needs are listed in the [root README](../../README.md#configuration) and in [`.env.example`](../../.env.example).
 
 ### Adding a source
 
-1. Create `sources/<name>.py` with:
-   - a `<Name>Settings(BaseSettings)` class, with `model_config = settings_config("ALEXANDRIA_<NAME>_")`;
-   - a source class with `changes(cursor) -> (changes, new_cursor)` and `download(file_id) -> bytes`;
-   - a factory that builds its client from the settings.
+1. Create a package `sources/<name>/`, laid out like the existing ones:
+   - `settings.py`: a `<Name>Settings(BaseSettings)` class, with `model_config = settings_config("ALEXANDRIA_<NAME>_")`;
+   - `protocols.py`: the small Protocol the source needs from the vendor SDK or API, so tests can pass a fake (see `DropboxClient`, `ObjectStore` and `GraphClient`);
+   - `client.py`: the real implementation of that Protocol, and a factory that builds it from the settings;
+   - `source.py`: the source class, with `changes(cursor) -> (changes, new_cursor)` and `download(file_id) -> bytes`;
+   - `__init__.py`: re-exports of the public names.
 
-   Keep the vendor SDK behind a small Protocol, so tests can pass a fake (see `DropboxClient` and `ObjectStore`).
+   Anything else gets its own module too, like SharePoint's `errors.py` and `items.py` (the id → path map).
 2. Add the name to `SourceSettings.kind`, and add a case to `make_source()` in `sources/__init__.py`.
 3. Catch the SDK's exceptions in `check_source` in `cli.py`.
 

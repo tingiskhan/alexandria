@@ -84,16 +84,16 @@ Secrets are `SecretStr`, so they never appear in logs or reprs. An empty value (
 | --- | --- | --- | --- | --- |
 | `ALEXANDRIA_DATABASE_URL` | `DatabaseSettings` (core) | yes, secret | workflows, MCP | `postgresql+psycopg://user:password@host:5432/alexandria` |
 | `ALEXANDRIA_SOURCE_KIND` | `SourceSettings` (ingest) | yes | workflows | `s3`, `dropbox` or `sharepoint`; only that source's settings are loaded |
-| `ALEXANDRIA_S3_ENDPOINT_URL` | `S3Settings` (ingest `sources/s3.py`) | no (AWS) | workflows | e.g. `http://rustfs:9000` |
+| `ALEXANDRIA_S3_ENDPOINT_URL` | `S3Settings` (ingest `sources/s3/`) | no (AWS) | workflows | e.g. `http://rustfs:9000` |
 | `ALEXANDRIA_S3_BUCKET` | `S3Settings` | yes (S3) | workflows | |
 | `ALEXANDRIA_S3_PREFIX` | `S3Settings` | no (`""`) | workflows | Only sync keys under this prefix, e.g. `papers/` |
 | `ALEXANDRIA_S3_ACCESS_KEY_ID` | `S3Settings` | yes (S3) | workflows | |
 | `ALEXANDRIA_S3_SECRET_ACCESS_KEY` | `S3Settings` | yes (S3), secret | workflows | |
 | `ALEXANDRIA_S3_REGION` | `S3Settings` | no (`us-east-1`) | workflows | |
-| `ALEXANDRIA_DROPBOX_APP_KEY` | `DropboxSettings` (ingest `sources/dropbox.py`) | yes (Dropbox) | workflows | |
+| `ALEXANDRIA_DROPBOX_APP_KEY` | `DropboxSettings` (ingest `sources/dropbox/`) | yes (Dropbox) | workflows | |
 | `ALEXANDRIA_DROPBOX_REFRESH_TOKEN` | `DropboxSettings` | yes (Dropbox), secret | workflows | From `alexandria-ingest auth`; valid until revoked |
 | `ALEXANDRIA_DROPBOX_PATH` | `DropboxSettings` | no (`""`) | workflows | Folder to sync, starting with `/`; `""` is the app folder root |
-| `ALEXANDRIA_SHAREPOINT_TENANT_ID` | `SharePointSettings` (ingest `sources/sharepoint.py`) | yes (SharePoint) | workflows | The Entra ID tenant (directory) id |
+| `ALEXANDRIA_SHAREPOINT_TENANT_ID` | `SharePointSettings` (ingest `sources/sharepoint/`) | yes (SharePoint) | workflows | The Entra ID tenant (directory) id |
 | `ALEXANDRIA_SHAREPOINT_CLIENT_ID` | `SharePointSettings` | yes (SharePoint) | workflows | The app registration's application (client) id |
 | `ALEXANDRIA_SHAREPOINT_CLIENT_SECRET` | `SharePointSettings` | yes (SharePoint), secret | workflows | |
 | `ALEXANDRIA_SHAREPOINT_SITE` | `SharePointSettings` | yes, unless `DRIVE_ID` is set | workflows | e.g. `contoso.sharepoint.com:/sites/Finance` |
