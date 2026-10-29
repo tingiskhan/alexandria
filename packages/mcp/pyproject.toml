@@ -9,7 +9,7 @@ dependencies = [
     "alexandria-core",
     "alexandria-embed",
     "mcp>=2.3",
-    "typer>=0.26",
+    "typer>=0.27.3",
 ]
 
 [build-system]

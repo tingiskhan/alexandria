@@ -10,7 +10,7 @@ dependencies = [
     "alexandria-embed",
     "alexandria-ingest",
     "prefect>=3.4",
-    "typer>=0.26",
+    "typer>=0.27.3",
 ]
 
 [build-system]
