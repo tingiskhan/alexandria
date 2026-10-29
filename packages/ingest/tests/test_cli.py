@@ -6,9 +6,11 @@ from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from alexandria_ingest import cli, sources
+from alexandria_ingest.sources.sharepoint import GraphError
 
 from .sources.test_dropbox import FakeDropboxClient
 from .sources.test_s3 import FakeObjectStore
+from .sources.test_sharepoint import ROOT, FakeGraph, file, page
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +22,10 @@ def source_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "ALEXANDRIA_S3_SECRET_ACCESS_KEY": "secret",
         "ALEXANDRIA_DROPBOX_APP_KEY": "key",
         "ALEXANDRIA_DROPBOX_REFRESH_TOKEN": "token",
+        "ALEXANDRIA_SHAREPOINT_TENANT_ID": "tenant",
+        "ALEXANDRIA_SHAREPOINT_CLIENT_ID": "app",
+        "ALEXANDRIA_SHAREPOINT_CLIENT_SECRET": "secret",
+        "ALEXANDRIA_SHAREPOINT_SITE": "contoso.sharepoint.com:/sites/Finance",
     }.items():
         monkeypatch.setenv(name, value)
 
@@ -113,3 +119,67 @@ def test_auth_prints_the_refresh_token(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0, result.output
     assert "https://dropbox.example/authorize" in result.output
     assert result.output.rstrip().endswith("ALEXANDRIA_DROPBOX_REFRESH_TOKEN=refresh-123")
+
+
+def test_check_source_lists_the_files_to_ingest_from_sharepoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_SOURCE_KIND", "sharepoint")
+    graph = FakeGraph(pages={None: page(ROOT, file("f1", "Plan.docx"), file("f2", "logo.svg"))})
+    monkeypatch.setattr(sources, "make_sharepoint_client", lambda _settings: graph)
+
+    result = CliRunner().invoke(cli.app, ["check-source"])
+
+    assert result.exit_code == 0, result.output
+    assert "sharepoint:contoso.sharepoint.com:/sites/Finance/Documents/: 2 files, 1 to ingest" in result.output
+    assert "/Plan.docx" in result.output
+
+
+def test_check_source_reports_sharepoint_access_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Denied(FakeGraph):
+        def delta_page(self, link: str | None) -> Any:
+            raise GraphError("HTTP 403 accessDenied: Either scp or roles claim need to be present in the token.")
+
+    monkeypatch.setenv("ALEXANDRIA_SOURCE_KIND", "sharepoint")
+    monkeypatch.setattr(sources, "make_sharepoint_client", lambda _settings: Denied())
+
+    result = CliRunner().invoke(cli.app, ["check-source"])
+
+    assert result.exit_code == 1
+    assert "access failed: HTTP 403 accessDenied" in result.output
+
+
+class FakeLibraries:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+
+    def libraries(self) -> list[tuple[str, str]]:
+        if self.error:
+            raise self.error
+        return [("Documents", "b!doc"), ("Site Assets", "b!assets")]
+
+
+def test_sharepoint_libraries_lists_names_and_drive_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "make_sharepoint_client", lambda _settings: FakeLibraries())
+
+    result = CliRunner().invoke(cli.app, ["sharepoint-libraries"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines() == ["Documents\tb!doc", "Site Assets\tb!assets"]
+
+
+def test_sharepoint_libraries_reports_access_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    error = GraphError("Sign-in failed: AADSTS7000215")
+    monkeypatch.setattr(cli, "make_sharepoint_client", lambda _settings: FakeLibraries(error))
+
+    result = CliRunner().invoke(cli.app, ["sharepoint-libraries"])
+
+    assert result.exit_code == 1
+    assert "contoso.sharepoint.com:/sites/Finance: access failed: Sign-in failed" in result.output
+
+
+def test_sharepoint_libraries_reports_missing_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALEXANDRIA_SHAREPOINT_CLIENT_SECRET")
+
+    result = CliRunner().invoke(cli.app, ["sharepoint-libraries"])
+
+    assert result.exit_code == 2
+    assert "client_secret" in result.output

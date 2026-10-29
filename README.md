@@ -3,7 +3,7 @@
 [![CI](https://github.com/tingiskhan/alexandria/actions/workflows/ci.yml/badge.svg)](https://github.com/tingiskhan/alexandria/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Alexandria syncs documents (PDF, Word, PowerPoint, Excel, HTML, Markdown, text, and optionally images) from an S3-compatible store (AWS, RustFS, MinIO) or Dropbox, indexes them in Postgres (pgvector plus full-text search), and lets an LLM agent search them and read exact pages over [MCP](https://modelcontextprotocol.io).
+Alexandria syncs documents (PDF, Word, PowerPoint, Excel, HTML, Markdown, text, and optionally images) from an S3-compatible store (AWS, RustFS, MinIO), Dropbox, or SharePoint and OneDrive for Business, indexes them in Postgres (pgvector plus full-text search), and lets an LLM agent search them and read exact pages over [MCP](https://modelcontextprotocol.io).
 
 ```text
 S3/Dropbox ──► alexandria-workflows (Prefect) → alexandria-ingest ──► Postgres + pgvector ◄── alexandria-mcp ◄── Claude
@@ -23,7 +23,7 @@ It's built for one person's or one team's library on a home server or workstatio
 | --- | --- | --- |
 | [`alexandria-core`](packages/core/README.md) | Domain types, protocols, schema, `PgStore`, hybrid search | SQLAlchemy, psycopg, pgvector |
 | [`alexandria-embed`](packages/embed/README.md) | `SentenceTransformerEmbedder` (BGE-M3, 1024 dimensions) | PyTorch |
-| [`alexandria-ingest`](packages/ingest/README.md) | File sources (S3, Dropbox), Docling extraction, chunking, the pipeline, a CLI | Docling, boto3, Dropbox SDK |
+| [`alexandria-ingest`](packages/ingest/README.md) | File sources (S3, Dropbox, SharePoint), Docling extraction, chunking, the pipeline, a CLI | Docling, boto3, Dropbox SDK, azure-identity, httpx |
 | [`alexandria-mcp`](packages/mcp/README.md) | Read-only MCP server | mcp SDK |
 | [`alexandria-workflows`](workflows/README.md) | Prefect flows; the only code that imports Prefect | Prefect |
 
@@ -83,16 +83,23 @@ Secrets are `SecretStr`, so they never appear in logs or reprs. An empty value (
 | Variable | Class | Required | Used by | Notes |
 | --- | --- | --- | --- | --- |
 | `ALEXANDRIA_DATABASE_URL` | `DatabaseSettings` (core) | yes, secret | workflows, MCP | `postgresql+psycopg://user:password@host:5432/alexandria` |
-| `ALEXANDRIA_SOURCE_KIND` | `SourceSettings` (ingest) | yes | workflows | `s3` or `dropbox`; only that source's settings are loaded |
-| `ALEXANDRIA_S3_ENDPOINT_URL` | `S3Settings` (ingest `sources/s3.py`) | no (AWS) | workflows | e.g. `http://rustfs:9000` |
+| `ALEXANDRIA_SOURCE_KIND` | `SourceSettings` (ingest) | yes | workflows | `s3`, `dropbox` or `sharepoint`; only that source's settings are loaded |
+| `ALEXANDRIA_S3_ENDPOINT_URL` | `S3Settings` (ingest `sources/s3/`) | no (AWS) | workflows | e.g. `http://rustfs:9000` |
 | `ALEXANDRIA_S3_BUCKET` | `S3Settings` | yes (S3) | workflows | |
 | `ALEXANDRIA_S3_PREFIX` | `S3Settings` | no (`""`) | workflows | Only sync keys under this prefix, e.g. `papers/` |
 | `ALEXANDRIA_S3_ACCESS_KEY_ID` | `S3Settings` | yes (S3) | workflows | |
 | `ALEXANDRIA_S3_SECRET_ACCESS_KEY` | `S3Settings` | yes (S3), secret | workflows | |
 | `ALEXANDRIA_S3_REGION` | `S3Settings` | no (`us-east-1`) | workflows | |
-| `ALEXANDRIA_DROPBOX_APP_KEY` | `DropboxSettings` (ingest `sources/dropbox.py`) | yes (Dropbox) | workflows | |
+| `ALEXANDRIA_DROPBOX_APP_KEY` | `DropboxSettings` (ingest `sources/dropbox/`) | yes (Dropbox) | workflows | |
 | `ALEXANDRIA_DROPBOX_REFRESH_TOKEN` | `DropboxSettings` | yes (Dropbox), secret | workflows | From `alexandria-ingest auth`; valid until revoked |
 | `ALEXANDRIA_DROPBOX_PATH` | `DropboxSettings` | no (`""`) | workflows | Folder to sync, starting with `/`; `""` is the app folder root |
+| `ALEXANDRIA_SHAREPOINT_TENANT_ID` | `SharePointSettings` (ingest `sources/sharepoint/`) | yes (SharePoint) | workflows | The Entra ID tenant (directory) id |
+| `ALEXANDRIA_SHAREPOINT_CLIENT_ID` | `SharePointSettings` | yes (SharePoint) | workflows | The app registration's application (client) id |
+| `ALEXANDRIA_SHAREPOINT_CLIENT_SECRET` | `SharePointSettings` | yes (SharePoint), secret | workflows | |
+| `ALEXANDRIA_SHAREPOINT_SITE` | `SharePointSettings` | yes, unless `DRIVE_ID` is set | workflows | e.g. `contoso.sharepoint.com:/sites/Finance` |
+| `ALEXANDRIA_SHAREPOINT_LIBRARY` | `SharePointSettings` | no (`Documents`) | workflows | The document library in the site |
+| `ALEXANDRIA_SHAREPOINT_DRIVE_ID` | `SharePointSettings` | no | workflows | A drive id instead of site and library, e.g. a OneDrive for Business drive |
+| `ALEXANDRIA_SHAREPOINT_PATH` | `SharePointSettings` | no (`""`) | workflows | Folder to sync, starting with `/`; `""` is the whole library |
 | `ALEXANDRIA_EMBEDDING_MODEL` | `EmbeddingSettings` (embed) | no (`BAAI/bge-m3`) | workflows, MCP | Must have 1024 dimensions (`EMBEDDING_DIMENSION` in `db.py`) |
 | `ALEXANDRIA_EMBEDDING_REVISION` | `EmbeddingSettings` | no (pinned commit) | workflows, MCP | Ingest and MCP must use the same model and revision |
 | `ALEXANDRIA_EMBEDDING_BATCH_SIZE` | `EmbeddingSettings` | no (`32`) | workflows | |
@@ -135,6 +142,32 @@ S3 has no change feed, so each sync lists the bucket prefix and compares it with
    ```
 
    Open the link, allow access, and paste the code. Then store the app key as `ALEXANDRIA_DROPBOX_APP_KEY` and the printed refresh token as `ALEXANDRIA_DROPBOX_REFRESH_TOKEN`. The refresh token stays valid until you revoke the app; the SDK uses it to get short-lived access tokens as needed.
+
+### SharePoint / OneDrive for Business / Teams
+
+Alexandria reads one document library through Microsoft Graph, signed in as an app of its own, so syncs run without a user. Teams channel files live in the team's SharePoint site (library `Documents`, one folder per channel), so they work the same way.
+
+1. In the [Entra admin center](https://entra.microsoft.com), under **App registrations**, register an app (single tenant, no redirect URI). Note its **Application (client) id** and **Directory (tenant) id**, and create a **client secret** under **Certificates & secrets**.
+2. Under **API permissions**, add the Microsoft Graph *application* permission `Sites.Selected`, and have an admin **grant admin consent**. `Sites.Selected` on its own gives access to nothing.
+3. Have an admin give the app read access to the site, for example in [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer), signed in as someone allowed to manage the site's permissions:
+
+   ```http
+   GET  https://graph.microsoft.com/v1.0/sites/contoso.sharepoint.com:/sites/Finance      → note "id"
+   POST https://graph.microsoft.com/v1.0/sites/{site id}/permissions
+   {"roles": ["read"], "grantedToIdentities": [{"application": {"id": "<client id>", "displayName": "Alexandria"}}]}
+   ```
+
+   The broader alternative is the application permission `Files.Read.All`, which reads every site and OneDrive in the tenant.
+4. Set `ALEXANDRIA_SOURCE_KIND=sharepoint` and the `ALEXANDRIA_SHAREPOINT_*` settings, then list the site's libraries and check access:
+
+   ```bash
+   uv run --extra cpu alexandria-ingest sharepoint-libraries
+   uv run --extra cpu alexandria-ingest check-source
+   ```
+
+For a OneDrive for Business drive, set `ALEXANDRIA_SHAREPOINT_DRIVE_ID` instead of the site (`GET /users/{user}/drive` returns its id); the app then needs `Files.Read.All`.
+
+Files are keyed by path, as with Dropbox, so a renamed or moved file, or the contents of a renamed folder, is ingested again under its new path.
 
 ## Ingest
 

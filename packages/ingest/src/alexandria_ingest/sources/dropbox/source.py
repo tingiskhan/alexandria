@@ -1,44 +1,14 @@
-"""FileSource over a Dropbox folder, via the official SDK and an offline refresh token (`alexandria-ingest auth`)."""
+"""DropboxSource: change detection with Dropbox's own cursor."""
 
 import logging
-from typing import Any, Protocol
 
-import dropbox
 from dropbox.exceptions import ApiError
 from dropbox.files import DeletedMetadata, FileMetadata
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings
 
 from alexandria_core.models import FileChange
-from alexandria_core.settings import settings_config
+from alexandria_ingest.sources.dropbox.protocols import DropboxClient
 
 log = logging.getLogger(__name__)
-
-
-class DropboxSettings(BaseSettings):
-    """Dropbox app and folder (ALEXANDRIA_DROPBOX_*)."""
-
-    model_config = settings_config("ALEXANDRIA_DROPBOX_")
-
-    app_key: str
-    refresh_token: SecretStr  # from `alexandria-ingest auth`; valid until the app is revoked
-    path: str = ""  # folder to sync, starting with "/"; "" is the app folder root
-
-
-class DropboxClient(Protocol):
-    """The part of dropbox.Dropbox this module uses, so tests can pass a fake."""
-
-    def files_list_folder(self, path: str, *, recursive: bool) -> Any:
-        """List a folder; returns a `ListFolderResult`."""
-        ...
-
-    def files_list_folder_continue(self, cursor: str) -> Any:
-        """Continue a listing from a cursor; returns a `ListFolderResult`."""
-        ...
-
-    def files_download(self, path: str) -> Any:
-        """Download a file; returns `(FileMetadata, requests.Response)`."""
-        ...
 
 
 class DropboxSource:
@@ -89,8 +59,3 @@ class DropboxSource:
         _, response = self._client.files_download(file_id)
         content: bytes = response.content
         return content
-
-
-def make_dropbox_client(settings: DropboxSettings) -> dropbox.Dropbox:
-    """A client that refreshes its short-lived access token from the offline (PKCE) refresh token."""
-    return dropbox.Dropbox(oauth2_refresh_token=settings.refresh_token.get_secret_value(), app_key=settings.app_key)

@@ -8,6 +8,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 - Ingest more than PDFs: Word, PowerPoint, Excel, HTML, Markdown and text by default, and images (OCR) or anything else Docling reads on request. `ALEXANDRIA_EXTRACT_FORMATS` lists the file extensions to ingest. Slides and sheets become pages; Word, HTML, Markdown and text files are a single page.
 - `alexandria-ingest check-source` counts the files to ingest per extension.
+- A SharePoint source (`ALEXANDRIA_SOURCE_KIND=sharepoint`): one document library, including Teams channel files, or a OneDrive for Business drive, through Microsoft Graph's delta feed. Signs in as an Entra ID app with a client secret; `Sites.Selected` limits it to the sites it is granted. `alexandria-ingest sharepoint-libraries` lists a site's libraries.
 
 ### Changed
 
