@@ -41,9 +41,9 @@ curl -L -o .env https://github.com/tingiskhan/alexandria/releases/latest/downloa
 docker compose up -d
 ```
 
-This starts Postgres with pgvector, a Prefect server, the ingest worker and the MCP server, all from the image `ghcr.io/tingiskhan/alexandria`. It comes in two variants: `<version>` with CUDA 12.8 PyTorch for the `gpu` worker, and `<version>-cpu`, which the `cpu` worker, the MCP server and the Prefect server use. The first start downloads the embedding model and Docling's models (a few GB) into the `models` volume.
+This starts Postgres with pgvector, a Prefect server, a Prefect worker for ingest and the MCP server, all from the image `ghcr.io/tingiskhan/alexandria`. It comes in two variants: `<version>` with CUDA 12.8 PyTorch for the `gpu` worker, and `<version>-cpu`, which the `cpu` worker, the MCP server and the Prefect server use. The first start downloads the embedding model and Docling's models (a few GB) into the `models` volume.
 
-- **Syncs** run every `ALEXANDRIA_SYNC_INTERVAL` (`1h` in the example `.env`). Follow them, or start one by hand, in the Prefect UI at <http://localhost:4200>.
+- **Syncs** run every `ALEXANDRIA_SYNC_INTERVAL` (`1h` in the example `.env`). Follow them, or start one by hand, in the Prefect UI at <http://localhost:4200>. The one-off `deploy` service registers the `sync` and `reindex` deployments on the `alexandria` work pool on every `docker compose up`, and the worker runs them.
 - **Check the source** before the first sync: `docker compose exec worker-gpu alexandria-ingest check-source` (or `worker-cpu`).
 - **Try it without your own storage:** add `rustfs` to `COMPOSE_PROFILES` and set `ALEXANDRIA_S3_SECRET_ACCESS_KEY`. Then create the bucket `library` in the RustFS console at <http://localhost:9001> and upload a few documents.
 - **Connect an agent:** see [Connect Claude](#connect-claude).
@@ -203,7 +203,7 @@ export PREFECT_LOGGING_EXTRA_LOGGERS=alexandria_ingest     # show pipeline logs 
 uv run --extra cu128 alexandria-workflows serve
 ```
 
-This serves two deployments, `sync/sync` and `reindex/reindex`. With `ALEXANDRIA_SYNC_INTERVAL` set, `sync` runs on that interval; otherwise, and always for `reindex`, start a run from the Prefect UI, with `uv run --extra cu128 prefect deployment run sync/sync`, or from a Prefect automation or webhook. Each deployment runs one flow run at a time; a run started while another is going waits for it to finish.
+This serves two deployments, `sync/sync` and `reindex/reindex`, from that process. To run them on a Prefect worker instead, register them once with `uv run alexandria-workflows deploy` (on the work pool `alexandria`, created if missing; `--work-pool` picks another) and start a worker where the work happens: `uv run --extra cu128 prefect worker start --pool alexandria`. With `ALEXANDRIA_SYNC_INTERVAL` set, `sync` runs on that interval; otherwise, and always for `reindex`, start a run from the Prefect UI, with `uv run --extra cu128 prefect deployment run sync/sync`, or from a Prefect automation or webhook. Each deployment runs one flow run at a time; a run started while another is going waits for it to finish.
 
 - `sync` ingests what changed in the source since the last run, plus files that failed before. The first run creates the database tables.
 - `reindex` re-chunks and re-embeds every stored document from its stored pages, without touching the source. Run it after changing the embedding model or the chunk size.

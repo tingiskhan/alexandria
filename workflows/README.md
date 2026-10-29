@@ -36,7 +36,9 @@ export PREFECT_LOGGING_EXTRA_LOGGERS=alexandria_ingest     # show pipeline logs 
 uv run --extra cu128 alexandria-workflows serve
 ```
 
-The Docker image runs the same command by default, and `deploy/compose.yaml` runs the Prefect server from the same image, so the client and server versions always match. See [Run with Docker](../README.md#run-with-docker).
+`serve` runs the flows in that process. Alternatively, `alexandria-workflows deploy [--work-pool alexandria]` registers the same deployments on a process work pool (creating the pool if it is missing) and exits, and a worker runs them: `prefect worker start --pool alexandria`. The deployments' entrypoints are module paths (`alexandria_workflows.flows.sync_flow`), so the worker needs Alexandria installed and its settings, but not this repo. Deploy again after changing `ALEXANDRIA_SYNC_INTERVAL`.
+
+`deploy/compose.yaml` does the latter: a one-off `deploy` container, then a worker, plus the Prefect server, all from the same image, so the client and server versions always match. See [Run with Docker](../README.md#run-with-docker).
 
 The workflows package caps SQLAlchemy below 2.1: Prefect 3.9's scheduler fails on 2.1 ("Can't evaluate bulk DML statement") and then creates no scheduled runs, while manual runs keep working. Lift the cap once Prefect supports 2.1.
 

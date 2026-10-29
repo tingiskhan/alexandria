@@ -24,5 +24,10 @@ def test_compose_runs_the_image_for_every_role() -> None:
     compose = (ROOT / "deploy" / "compose.yaml").read_text()
 
     assert "ghcr.io/tingiskhan/alexandria:${ALEXANDRIA_VERSION:-latest}" in compose  # the release job pins this
-    for command in ('"alexandria-workflows", "serve"', '"alexandria-mcp", "--transport"', '"prefect", "server"'):
+    for command in (
+        '"alexandria-workflows", "deploy"',
+        '"prefect", "worker"',
+        '"alexandria-mcp", "--transport"',
+        '"prefect", "server"',
+    ):
         assert command in compose

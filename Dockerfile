@@ -1,4 +1,5 @@
-# Alexandria: one image for the ingest worker, the MCP server and the Prefect server; the command picks the role.
+# Alexandria: one image for the Prefect worker, the MCP server and the Prefect server; the command picks the role
+# (see deploy/compose.yaml). It serves nothing by default.
 #   docker build -t alexandria .                          # CUDA 12.8 PyTorch (needs the NVIDIA Container Toolkit to use the GPU)
 #   docker build --build-arg TORCH=cpu -t alexandria:cpu .  # CPU-only PyTorch, much smaller
 # Models are not baked in: they download on first start into $HF_HOME, which deploy/compose.yaml keeps in a volume.
@@ -42,4 +43,4 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 USER alexandria
 WORKDIR /home/alexandria
 
-CMD ["alexandria-workflows", "serve"]
+CMD ["alexandria-workflows", "--help"]

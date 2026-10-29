@@ -22,14 +22,15 @@ x-alexandria: &alexandria
     - models:/models
   restart: unless-stopped
 
+# Workers run the flow runs of the `alexandria` work pool, each in a subprocess with the worker's settings.
 x-worker: &worker
   <<: *alexandria
-  command: ["alexandria-workflows", "serve"]
+  command: ["prefect", "worker", "start", "--pool", "alexandria"]
   depends_on:
     postgres:
       condition: service_healthy
-    prefect:
-      condition: service_healthy
+    deploy:
+      condition: service_completed_successfully
 
 services:
   postgres:
@@ -60,6 +61,17 @@ services:
       interval: 5s
       retries: 30
     restart: unless-stopped
+
+  # Registers the sync and reindex deployments (and the work pool), then exits. Runs again on every `up`,
+  # so a changed ALEXANDRIA_SYNC_INTERVAL takes effect.
+  deploy:
+    <<: *alexandria
+    image: *image-cpu
+    command: ["alexandria-workflows", "deploy", "--work-pool", "alexandria"]
+    depends_on:
+      prefect:
+        condition: service_healthy
+    restart: "no"
 
   worker-gpu:
     <<: *worker
