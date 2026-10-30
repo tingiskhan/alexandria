@@ -31,3 +31,10 @@ def test_compose_runs_the_image_for_every_role() -> None:
         '"prefect", "server"',
     ):
         assert command in compose
+
+
+def test_compose_keeps_other_web_pages_out_of_the_prefect_api() -> None:
+    compose = (ROOT / "deploy" / "compose.yaml").read_text()
+
+    assert "PREFECT_SERVER_CORS_ALLOWED_ORIGINS: http://localhost:4200" in compose
+    assert 'PREFECT_SERVER_CSRF_PROTECTION_ENABLED: "true"' in compose

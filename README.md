@@ -129,6 +129,7 @@ Secrets are `SecretStr`, so they never appear in logs or reprs. An empty value (
 | `ALEXANDRIA_SYNC_INTERVAL` | `WorkflowSettings` (workflows) | no (none) | workflows | Run `sync` this often: seconds, `30m`, `1h`, `1d` or ISO 8601 (`PT1H`); unset means runs only start by hand |
 | `ALEXANDRIA_MCP_HOST` | `McpSettings` (mcp) | no (`127.0.0.1`) | MCP | Where `--transport streamable-http` listens; the Docker image's compose file sets `0.0.0.0` inside the container |
 | `ALEXANDRIA_MCP_PORT` | `McpSettings` | no (`8000`) | MCP | |
+| `ALEXANDRIA_MCP_ALLOWED_HOSTS` | `McpSettings` | no | MCP | Other names clients reach the HTTP server by, comma-separated, e.g. your proxy's; requests for any other name than localhost are refused |
 
 To add settings for a new component, define a `BaseSettings` subclass in its package with `model_config = settings_config("ALEXANDRIA_<COMPONENT>_")` from `alexandria_core.settings`, and load it in the entry points that use it.
 

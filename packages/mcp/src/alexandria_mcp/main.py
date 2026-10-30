@@ -32,7 +32,7 @@ def main(transport: Annotated[Transport, typer.Option(help="How clients connect.
         )
     server = build_server(PgStore(make_engine(database.url.get_secret_value())), embedder)
     if transport is Transport.HTTP:
-        server.run(transport=transport.value, host=mcp.host, port=mcp.port)
+        server.run(transport=transport.value, host=mcp.host, port=mcp.port, transport_security=mcp.transport_security())
     else:
         server.run(transport=transport.value)
 

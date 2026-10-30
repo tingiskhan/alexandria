@@ -52,6 +52,9 @@ services:
     command: ["prefect", "server", "start", "--host", "0.0.0.0"]
     environment:
       PREFECT_UI_API_URL: http://localhost:4200/api  # what the browser calls; 0.0.0.0 is blocked by browsers
+      # Without these, any web page open in your browser can use this API. The UI and workers handle the tokens.
+      PREFECT_SERVER_CORS_ALLOWED_ORIGINS: http://localhost:4200,http://127.0.0.1:4200
+      PREFECT_SERVER_CSRF_PROTECTION_ENABLED: "true"
     ports:
       - "127.0.0.1:4200:4200"
     volumes:
