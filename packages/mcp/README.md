@@ -20,12 +20,13 @@ uv run --extra cpu alexandria-mcp --transport stdio
 
 The server needs `ALEXANDRIA_DATABASE_URL` and the same embedding settings as ingest (see the [root README](../../README.md#configuration)). It loads the embedding model on the CPU at startup, which takes a few seconds, and never writes to the database.
 
-`--transport streamable-http` serves MCP over HTTP on `127.0.0.1:8000`. It has **no authentication**: keep it on localhost, or put it behind a reverse proxy that authenticates before you expose it.
+`--transport streamable-http` serves MCP over HTTP on `127.0.0.1:8000`, or wherever `ALEXANDRIA_MCP_HOST` and `ALEXANDRIA_MCP_PORT` say (`McpSettings` in `settings.py`); the Docker deployment sets `0.0.0.0` inside the container and publishes the port on localhost. It has **no authentication**: keep it on localhost, or put it behind a reverse proxy that authenticates before you expose it. It refuses requests addressed to anything but localhost, so web pages can't reach it by DNS rebinding; add a proxy's name to `ALEXANDRIA_MCP_ALLOWED_HOSTS`.
 
 ## Code
 
 - `server.py`: `build_server(store, embedder)` builds the server from any `DocumentStore` and `Embedder`. Each tool validates its arguments, calls the store, and formats the result.
 - `main.py`: the composition root. It loads settings, builds the real store and embedder, and runs the server.
+- `settings.py`: `McpSettings`, where the HTTP transport listens.
 
 ## Tests
 

@@ -1,0 +1,22 @@
+# Allowlist: nothing goes into the build context unless it is listed here, so secrets (.env), tests, caches
+# and anything new in the repo stay out of images by default. Later lines win over earlier ones.
+*
+
+# The workspace and its lockfile; the READMEs and LICENSE are read when the packages are built.
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+
+# Each package's metadata and code (not its tests).
+!packages/*/pyproject.toml
+!packages/*/README.md
+!packages/*/src/
+!workflows/pyproject.toml
+!workflows/README.md
+!workflows/src/
+
+# Re-excluded even inside the folders above: env files (secrets) and bytecode from local runs.
+**/.env*
+**/__pycache__
+**/*.py[cod]

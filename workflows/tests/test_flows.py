@@ -1,7 +1,11 @@
 from collections.abc import Iterator
+from datetime import timedelta
 from typing import Any, cast
 
 import pytest
+import typer
+from prefect.client.orchestration import get_client
+from prefect.client.schemas.schedules import IntervalSchedule
 from prefect.testing.utilities import prefect_test_harness
 
 from alexandria_core.db import EMBEDDING_DIMENSION
@@ -164,12 +168,56 @@ def test_build_pipeline_refuses_a_model_that_does_not_fit_the_schema(
         flows.build_pipeline()
 
 
-def test_serve_runs_both_deployments_one_run_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+def serve(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     served: list[Any] = []
     monkeypatch.setattr(flows, "serve", lambda *deployments: served.extend(deployments))
-
     flows.serve_command()
+    return served
+
+
+def test_serve_runs_both_deployments_one_run_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALEXANDRIA_SYNC_INTERVAL", raising=False)
+
+    served = serve(monkeypatch)
 
     assert [d.name for d in served] == ["sync", "reindex"]
     assert all(d.schedules == [] for d in served)
     assert all(d.concurrency_limit == 1 for d in served)
+
+
+def test_an_interval_schedules_sync_but_not_reindex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_SYNC_INTERVAL", "30m")
+
+    sync, reindex = serve(monkeypatch)
+
+    assert [s.schedule.interval for s in sync.schedules] == [timedelta(minutes=30)]
+    assert reindex.schedules == []
+
+
+def test_deploy_registers_both_deployments_on_a_new_process_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_SYNC_INTERVAL", "1h")
+
+    flows.deploy_command(work_pool="alexandria-test")
+    flows.deploy_command(work_pool="alexandria-test")  # again: the pool exists and the deployments are updated
+
+    with get_client(sync_client=True) as client:
+        pool = client.read_work_pool("alexandria-test")
+        sync, reindex = (client.read_deployment_by_name(f"{name}/{name}") for name in ("sync", "reindex"))
+    assert pool.type == "process"
+    assert sync.work_pool_name == reindex.work_pool_name == "alexandria-test"
+    # A worker imports the flows from the installed package, not from a file path on this machine.
+    assert sync.entrypoint == "alexandria_workflows.flows.sync_flow"
+    assert reindex.entrypoint == "alexandria_workflows.flows.reindex_flow"
+    assert [s.schedule.interval for s in sync.schedules if isinstance(s.schedule, IntervalSchedule)] == [
+        timedelta(hours=1)
+    ]
+    assert len(sync.schedules) == 1
+    assert reindex.schedules == []
+    assert [d.global_concurrency_limit and d.global_concurrency_limit.limit for d in (sync, reindex)] == [1, 1]
+
+
+def test_deploy_fails_when_a_deployment_is_not_created(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(flows, "deploy", lambda *deployments, **options: [])
+
+    with pytest.raises(typer.Exit):
+        flows.deploy_command(work_pool="alexandria-test")

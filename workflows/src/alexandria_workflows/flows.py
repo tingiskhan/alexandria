@@ -1,12 +1,19 @@
 """Prefect wiring. The only module that imports Prefect; all logic lives in alexandria_ingest."""
 
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 from prefect import flow, serve, task
 from prefect.cache_policies import NO_CACHE
+from prefect.client.orchestration import get_client
+from prefect.client.schemas.actions import WorkPoolCreate
+from prefect.deployments import deploy
+from prefect.exceptions import ObjectAlreadyExists
+from prefect.types.entrypoint import EntrypointType
+from prefect.workers.process import ProcessWorker
 
 from alexandria_core.db import EMBEDDING_DIMENSION, init_schema, make_engine, wait_for_database
 from alexandria_core.models import DocumentSummary, FileChange
@@ -28,8 +35,11 @@ from alexandria_ingest.pipeline import (
 )
 from alexandria_ingest.settings import ChunkSettings, ExtractSettings
 from alexandria_ingest.sources import make_source
+from alexandria_workflows.settings import WorkflowSettings
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from prefect.deployments.runner import RunnerDeployment
 
 
@@ -151,12 +161,42 @@ def main() -> None:
     """Alexandria Prefect workflows."""
 
 
+def deployments() -> list["RunnerDeployment"]:
+    """The sync and reindex deployments. `sync` runs every ALEXANDRIA_SYNC_INTERVAL, if that is set."""
+    interval = WorkflowSettings().interval
+    # One run at a time per deployment: overlapping syncs would compete for the GPU and race on the cursor.
+    # The entrypoint is the installed module rather than this file's path, so any worker with Alexandria
+    # installed can load the flows. to_deployment returns a coroutine only when called from async code.
+    module = EntrypointType.MODULE_PATH
+    sync = sync_flow.to_deployment(name="sync", concurrency_limit=1, entrypoint_type=module, interval=interval)
+    reindex = reindex_flow.to_deployment(name="reindex", concurrency_limit=1, entrypoint_type=module)
+    return [cast("RunnerDeployment", sync), cast("RunnerDeployment", reindex)]
+
+
 @app.command(name="serve")
 def serve_command() -> None:
-    """Serve the sync and reindex deployments. Neither has a schedule; start runs from Prefect."""
-    # One run at a time per deployment: overlapping syncs would compete for the GPU and race on the cursor.
-    # to_deployment returns a coroutine only when called from async code; here it is called synchronously.
-    serve(
-        cast("RunnerDeployment", sync_flow.to_deployment(name="sync", concurrency_limit=1)),
-        cast("RunnerDeployment", reindex_flow.to_deployment(name="reindex", concurrency_limit=1)),
-    )
+    """Serve the sync and reindex deployments from this process.
+
+    `sync` runs every ALEXANDRIA_SYNC_INTERVAL, if that is set. Otherwise, and always for `reindex`, start runs
+    from Prefect.
+    """
+    serve(*deployments())
+
+
+@app.command(name="deploy")
+def deploy_command(
+    work_pool: Annotated[str, typer.Option(help="The process work pool to run on; created if missing.")] = "alexandria",
+) -> None:
+    """Register the sync and reindex deployments on a work pool, then exit.
+
+    A worker runs them: `prefect worker start --pool <work pool>`, wherever Alexandria and its settings are.
+    Deploying again updates the deployments, for example after changing ALEXANDRIA_SYNC_INTERVAL.
+    """
+    template = ProcessWorker.get_default_base_job_template()
+    with get_client(sync_client=True) as client, suppress(ObjectAlreadyExists):
+        client.create_work_pool(WorkPoolCreate(name=work_pool, type="process", base_job_template=template))
+    to_deploy = deployments()
+    created = deploy(*to_deploy, work_pool_name=work_pool, print_next_steps_message=False, ignore_warnings=True)
+    created = cast("list[UUID]", created)  # like to_deployment, a coroutine only from async code
+    if len(created) != len(to_deploy):  # deploy reports failures in its output instead of raising
+        raise typer.Exit(1)

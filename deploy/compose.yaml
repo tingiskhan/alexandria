@@ -1,0 +1,128 @@
+# Alexandria, ready to run. Put this file and .env (from .env.example) in a folder, fill in .env, then:
+#   docker compose up -d
+#
+#   Prefect UI   http://localhost:4200   start runs, see logs (no authentication: localhost only)
+#   MCP server   http://localhost:8000/mcp (no authentication: localhost only)
+#   RustFS       http://localhost:9001   console, with COMPOSE_PROFILES including rustfs
+#
+# COMPOSE_PROFILES in .env picks the worker: gpu (NVIDIA, needs the NVIDIA Container Toolkit) or cpu.
+# See https://github.com/tingiskhan/alexandria#run-with-docker
+name: alexandria
+
+x-image: &image ghcr.io/tingiskhan/alexandria:${ALEXANDRIA_VERSION:-latest}
+x-image-cpu: &image-cpu ghcr.io/tingiskhan/alexandria:${ALEXANDRIA_VERSION:-latest}-cpu
+
+x-alexandria: &alexandria
+  env_file: .env
+  environment: &environment
+    ALEXANDRIA_DATABASE_URL: postgresql+psycopg://alexandria:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/alexandria
+    PREFECT_API_URL: http://prefect:4200/api
+    PREFECT_LOGGING_EXTRA_LOGGERS: alexandria_ingest
+  volumes:
+    - models:/models
+  restart: unless-stopped
+
+# Workers run the flow runs of the `alexandria` work pool, each in a subprocess with the worker's settings.
+x-worker: &worker
+  <<: *alexandria
+  command: ["prefect", "worker", "start", "--pool", "alexandria"]
+  depends_on:
+    postgres:
+      condition: service_healthy
+    deploy:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17
+    environment:
+      POSTGRES_USER: alexandria
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: alexandria
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "alexandria"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  prefect:
+    image: *image-cpu
+    command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+    environment:
+      PREFECT_UI_API_URL: http://localhost:4200/api  # what the browser calls; 0.0.0.0 is blocked by browsers
+      # Without these, any web page open in your browser can use this API. The UI and workers handle the tokens.
+      PREFECT_SERVER_CORS_ALLOWED_ORIGINS: http://localhost:4200,http://127.0.0.1:4200
+      PREFECT_SERVER_CSRF_PROTECTION_ENABLED: "true"
+    ports:
+      - "127.0.0.1:4200:4200"
+    volumes:
+      - prefect:/data/prefect
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      interval: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # Registers the sync and reindex deployments (and the work pool), then exits. Runs again on every `up`,
+  # so a changed ALEXANDRIA_SYNC_INTERVAL takes effect.
+  deploy:
+    <<: *alexandria
+    image: *image-cpu
+    command: ["alexandria-workflows", "deploy", "--work-pool", "alexandria"]
+    depends_on:
+      prefect:
+        condition: service_healthy
+    restart: "no"
+
+  worker-gpu:
+    <<: *worker
+    image: *image
+    profiles: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  worker-cpu:
+    <<: *worker
+    image: *image-cpu
+    profiles: [cpu]
+
+  mcp:
+    <<: *alexandria
+    image: *image-cpu
+    command: ["alexandria-mcp", "--transport", "streamable-http"]
+    environment:
+      <<: *environment
+      ALEXANDRIA_MCP_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  rustfs:
+    image: rustfs/rustfs:1.0.4
+    profiles: [rustfs]
+    environment:
+      RUSTFS_ACCESS_KEY: ${ALEXANDRIA_S3_ACCESS_KEY_ID:?set ALEXANDRIA_S3_ACCESS_KEY_ID in .env}
+      RUSTFS_SECRET_KEY: ${ALEXANDRIA_S3_SECRET_ACCESS_KEY:?set ALEXANDRIA_S3_SECRET_ACCESS_KEY in .env}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    ports:
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - rustfs:/data
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  prefect:
+  models:
+  rustfs:

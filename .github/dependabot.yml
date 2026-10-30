@@ -24,9 +24,9 @@ updates:
     commit-message:
       prefix: ci
 
-  # Images in compose.yaml (pgvector, RustFS), used for local testing.
+  # Images in compose.yaml (local testing) and deploy/compose.yaml (the release's compose file).
   - package-ecosystem: docker-compose
-    directory: /
+    directories: ["/", "/deploy"]
     schedule:
       interval: weekly
     groups:
@@ -34,3 +34,14 @@ updates:
         update-types: [minor, patch]
     commit-message:
       prefix: compose
+
+  # The Dockerfile's base image (python) and the uv image it copies uv from.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: docker
