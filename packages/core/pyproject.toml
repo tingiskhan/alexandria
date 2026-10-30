@@ -5,7 +5,7 @@ description = "Domain types, protocols, Postgres schema, PgStore and hybrid sear
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
-dependencies = ["sqlalchemy>=2.0", "psycopg[binary]>=3.3.6", "pgvector>=0.4", "pydantic-settings>=2.6"]
+dependencies = ["sqlalchemy>=2.1.6", "psycopg[binary]>=3.3.6", "pgvector>=0.4", "pydantic-settings>=2.6"]
 
 [build-system]
 requires = ["hatchling"]

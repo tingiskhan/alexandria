@@ -11,7 +11,7 @@ dependencies = [
     "dropbox>=12",
     "docling>=2.50",
     "typer>=0.27.3",
-    "boto3>=1.40",
+    "boto3>=1.43.119",
     "azure-identity>=1.25",
     "httpx>=0.28",
 ]
