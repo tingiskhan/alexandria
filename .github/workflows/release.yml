@@ -72,7 +72,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=pr
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           build-args: TORCH=${{ matrix.torch }}
