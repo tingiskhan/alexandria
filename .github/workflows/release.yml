@@ -61,7 +61,7 @@ jobs:
       # 1.2.3, 1.2 and latest (or pr-N on pull requests), with -cpu appended for the CPU variant.
       # Pre-release tags (v1.2.3-rc.1) get only their exact version.
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           flavor: |
