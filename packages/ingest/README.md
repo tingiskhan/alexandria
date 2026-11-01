@@ -18,6 +18,7 @@ This package holds the steps only. Scheduling, retries and the composition root 
 | `chunk.py` | `chunk_pages` and `embedding_text`. Pure functions, no I/O. |
 | `sources/` | One package per file source (settings, protocols, client, source), plus `make_source()`, which builds the configured one. |
 | `settings.py` | `ChunkSettings`, `ExtractSettings` (which file extensions to ingest) and `SourceSettings`. Each source's settings sit next to the source itself. |
+| `doctags.py` | Keeps literal `<` in DocTags model output, which docling-core's parser would otherwise drop along with the text after it. |
 | `cli.py` | The `alexandria-ingest` command. |
 
 ## How a sync works

@@ -4,15 +4,15 @@ import re
 from collections.abc import Iterable
 from io import BytesIO
 
-from docling.datamodel import vlm_model_specs
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions, VlmPipelineOptions
+from docling.datamodel.pipeline_options import PdfPipelineOptions, VlmConvertOptions, VlmPipelineOptions
 from docling.document_converter import DocumentConverter, FormatOption, ImageFormatOption, PdfFormatOption
 from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
-from docling.pipeline.vlm_pipeline import VlmPipeline
+from docling_core.types.doc import DoclingDocument
 from docling_core.types.io import DocumentStream
 
 from alexandria_core.models import Page
+from alexandria_ingest.doctags import LiteralTextVlmPipeline, restore_literal_less_than
 from alexandria_ingest.settings import DEFAULT_FORMATS, input_format
 
 # C0 control characters and DEL, except tab and newline. PDFs with broken font encodings turn glyphs into these;
@@ -33,18 +33,17 @@ class DoclingExtractor:
     Docling picks the GPU when one is available and falls back to CPU.
     """
 
-    def __init__(self, formats: Iterable[str] = DEFAULT_FORMATS, *, use_vlm: bool = True) -> None:
+    def __init__(
+        self, formats: Iterable[str] = DEFAULT_FORMATS, *, use_vlm: bool = True, vlm_preset: str = "mineru2_pro"
+    ) -> None:
         allowed = sorted({input_format(extension) for extension in formats}, key=lambda f: f.value)
 
         options = PdfPipelineOptions(do_ocr=True, do_table_structure=True, do_formula_enrichment=True)
-        if not use_vlm:
-            pdf_options = options
-        else:
-            pdf_options = VlmPipelineOptions(vlm_options=vlm_model_specs.GRANITEDOCLING_TRANSFORMERS)
+        pdf_options = VlmPipelineOptions(vlm_options=VlmConvertOptions.from_preset(vlm_preset)) if use_vlm else options
 
         format_options: dict[InputFormat, FormatOption] = {
             InputFormat.PDF: PdfFormatOption(
-                pipeline_options=pdf_options, pipeline_cls=VlmPipeline if use_vlm else StandardPdfPipeline
+                pipeline_options=pdf_options, pipeline_cls=LiteralTextVlmPipeline if use_vlm else StandardPdfPipeline
             ),
             InputFormat.IMAGE: ImageFormatOption(pipeline_options=options),
         }
@@ -57,10 +56,12 @@ class DoclingExtractor:
         """Convert one document; `name` (the file name) picks the format. Tables come out as Markdown tables."""
         result = self._converter.convert(DocumentStream(name=name, stream=BytesIO(content)))
         document = result.document
-        # Docling escapes for HTML rendering by default ("S&amp;P"); readers here are the agent and full-text search.
         if not document.pages:
-            return [Page(number=1, markdown=clean_text(document.export_to_markdown(escape_html=False)))]
-        return [
-            Page(number=n, markdown=clean_text(document.export_to_markdown(page_no=n, escape_html=False)))
-            for n in sorted(document.pages)
-        ]
+            return [Page(number=1, markdown=_markdown(document))]
+        return [Page(number=n, markdown=_markdown(document, n)) for n in sorted(document.pages)]
+
+
+def _markdown(document: DoclingDocument, page_no: int | None = None) -> str:
+    """One page, or the whole document, as storable Markdown."""
+    # Docling escapes for HTML rendering by default ("S&amp;P"); readers here are the agent and full-text search.
+    return clean_text(restore_literal_less_than(document.export_to_markdown(page_no=page_no, escape_html=False)))

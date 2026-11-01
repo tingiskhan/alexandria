@@ -10,12 +10,13 @@ One file goes through three steps, split by what they touch so a scheduler can r
 """
 
 import logging
-from collections.abc import Callable, Set
+import re
+from collections.abc import Callable, Iterable, Set
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
 
-from alexandria_core.models import Document, DocumentSummary, EmbeddedChunk, FileChange
+from alexandria_core.models import Document, DocumentSummary, EmbeddedChunk, FileChange, Page
 from alexandria_core.protocols import DocumentStore, Embedder, Extractor, FileSource
 from alexandria_ingest.chunk import chunk_pages, embedding_text
 
@@ -60,11 +61,20 @@ def triage(change: FileChange, *, store: DocumentStore, formats: Set[str]) -> Ou
     return None
 
 
+def warn_about_truncation(path: str, pages: Iterable[Page]) -> None:
+    """Log paragraphs with an unclosed `{`: usually math cut off mid-formula, which no extractor reports as an error."""
+    for page in pages:
+        for paragraph in re.split(r"\n\s*\n", page.markdown):
+            if paragraph.count("{") > paragraph.count("}"):
+                log.warning("%s p. %d: possibly truncated text: …%s", path, page.number, paragraph[-80:])
+
+
 def prepare_file(
     change: FileChange, *, source: FileSource, extractor: Extractor, embedder: Embedder, max_tokens: int
 ) -> IndexedDocument:
     """Download → extract → chunk → embed. Writes nothing, so it is safe to retry."""
     pages = extractor.extract(source.download(change.source_id), PurePosixPath(change.path).name)
+    warn_about_truncation(change.path, pages)
     document = Document(
         source_id=change.source_id,
         path=change.path,
