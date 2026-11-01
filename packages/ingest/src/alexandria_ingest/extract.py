@@ -4,9 +4,12 @@ import re
 from collections.abc import Iterable
 from io import BytesIO
 
+from docling.datamodel import vlm_model_specs
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.pipeline_options import PdfPipelineOptions, VlmPipelineOptions
 from docling.document_converter import DocumentConverter, FormatOption, ImageFormatOption, PdfFormatOption
+from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
+from docling.pipeline.vlm_pipeline import VlmPipeline
 from docling_core.types.io import DocumentStream
 
 from alexandria_core.models import Page
@@ -30,13 +33,22 @@ class DoclingExtractor:
     Docling picks the GPU when one is available and falls back to CPU.
     """
 
-    def __init__(self, formats: Iterable[str] = DEFAULT_FORMATS) -> None:
+    def __init__(self, formats: Iterable[str] = DEFAULT_FORMATS, *, use_vlm: bool = True) -> None:
         allowed = sorted({input_format(extension) for extension in formats}, key=lambda f: f.value)
+
         options = PdfPipelineOptions(do_ocr=True, do_table_structure=True, do_formula_enrichment=True)
+        if not use_vlm:
+            pdf_options = options
+        else:
+            pdf_options = VlmPipelineOptions(vlm_options=vlm_model_specs.GRANITEDOCLING_TRANSFORMERS)
+
         format_options: dict[InputFormat, FormatOption] = {
-            InputFormat.PDF: PdfFormatOption(pipeline_options=options),
+            InputFormat.PDF: PdfFormatOption(
+                pipeline_options=pdf_options, pipeline_cls=VlmPipeline if use_vlm else StandardPdfPipeline
+            ),
             InputFormat.IMAGE: ImageFormatOption(pipeline_options=options),
         }
+
         self._converter = DocumentConverter(
             allowed_formats=allowed, format_options={f: o for f, o in format_options.items() if f in allowed}
         )

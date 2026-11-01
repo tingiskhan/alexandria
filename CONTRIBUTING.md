@@ -21,7 +21,7 @@ uv run --extra cpu ty check
 uv run --extra cpu pytest --cov          # fails below 95% coverage
 ```
 
-CI runs the same checks. If you changed extraction or embedding and have an NVIDIA GPU, also run `uv run --extra cu128 pytest -m gpu`.
+CI runs the same checks. `make lint` runs the first three, `make format` applies ruff's fixes and formatting, and `make format-and-lint` does both. If you changed extraction or embedding and have an NVIDIA GPU, also run `uv run --extra cu128 pytest -m gpu`.
 
 ## How the code is organised
 
