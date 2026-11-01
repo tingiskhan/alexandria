@@ -32,7 +32,7 @@ class DoclingExtractor:
 
     def __init__(self, formats: Iterable[str] = DEFAULT_FORMATS) -> None:
         allowed = sorted({input_format(extension) for extension in formats}, key=lambda f: f.value)
-        options = PdfPipelineOptions(do_ocr=True, do_table_structure=True)
+        options = PdfPipelineOptions(do_ocr=True, do_table_structure=True, do_formula_enrichment=True)
         format_options: dict[InputFormat, FormatOption] = {
             InputFormat.PDF: PdfFormatOption(pipeline_options=options),
             InputFormat.IMAGE: ImageFormatOption(pipeline_options=options),
