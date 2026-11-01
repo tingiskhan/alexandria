@@ -19,6 +19,8 @@ This package holds the steps only. Scheduling, retries and the composition root 
 | `sources/` | One package per file source (settings, protocols, client, source), plus `make_source()`, which builds the configured one. |
 | `settings.py` | `ChunkSettings`, `ExtractSettings` (which file extensions to ingest) and `SourceSettings`. Each source's settings sit next to the source itself. |
 | `doctags.py` | Keeps literal `<` in DocTags model output, which docling-core's parser would otherwise drop along with the text after it. |
+| `latex.py` | `normalize_math`: the stored maths convention, inline `\(...\)` and display `$$...$$` with no Markdown escapes inside. |
+| `katex.py` | `katex_error`: checks a formula with the vendored KaTeX, without Node. |
 | `cli.py` | The `alexandria-ingest` command. |
 
 ## How a sync works
@@ -80,6 +82,7 @@ A source has two jobs: report every deletion and give each file a stable content
 
 ```bash
 uv run --extra cpu alexandria-ingest check-source             # check access to the configured source and list the files to ingest
+uv run --extra cpu alexandria-ingest check-formulas           # run every stored formula through KaTeX, list failures per document and page
 uv run --extra cpu alexandria-ingest auth --app-key <key>     # Dropbox only: one-off consent, prints the refresh token
 uv run --extra cpu alexandria-ingest sharepoint-libraries     # SharePoint only: the site's document libraries and drive ids
 ```

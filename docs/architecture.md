@@ -96,6 +96,8 @@ If a file still fails after its retries, it is recorded with `status = failed` (
 
 `DoclingExtractor` converts a document with OCR and table structure recognition on, and exports Markdown per page, so page numbers survive for citations. The file name picks Docling's format. PowerPoint slides and Excel sheets become pages; formats without pages (Word, HTML, Markdown, text) are stored as a single page 1. Control characters, which PDFs with broken font encodings produce, are removed. Docling uses the GPU when there is one.
 
+Stored Markdown has one maths convention: inline `\(...\)`, display `$$...$$`, with no Markdown escapes inside either (`latex.py`). `\(` rather than `$` because `$` also occurs in prose. Every formula is checked with KaTeX during ingest, in-process through dukpy. A formula that fails is logged and the document is stored anyway, because most failures are model reading errors; `alexandria-ingest check-formulas` reports them for everything stored.
+
 ### Chunking
 
 `chunk_pages(pages, max_tokens)` is a pure function:

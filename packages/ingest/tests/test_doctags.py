@@ -98,7 +98,7 @@ def test_a_literal_less_than_survives_the_full_ingest_path(monkeypatch: pytest.M
     )
 
     stored = store.documents["id-1"]
-    expected = r"x$\_{<t}$, z$\_{<t}$ and more text after"  # Docling's Markdown serializer escapes the underscore
+    expected = r"x\(_{<t}\), z\(_{<t}\) and more text after"
     assert outcome == "ingested"
     assert [p.markdown for p in stored.doc.pages] == [expected]
     assert [c.chunk.text for c in stored.chunks] == [expected]

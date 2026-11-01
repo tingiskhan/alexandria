@@ -17,7 +17,7 @@ class FakeDocument:
     whole: str = ""
     exports: list[tuple[int | None, bool]] = field(default_factory=list)
 
-    def export_to_markdown(self, *, page_no: int | None = None, escape_html: bool) -> str:
+    def export_to_markdown(self, *, page_no: int | None = None, escape_html: bool, labels: set[Any]) -> str:
         self.exports.append((page_no, escape_html))
         return self.whole if page_no is None else self.pages[page_no]
 

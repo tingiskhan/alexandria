@@ -8,16 +8,22 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, VlmConvertOptions, VlmPipelineOptions
 from docling.document_converter import DocumentConverter, FormatOption, ImageFormatOption, PdfFormatOption
 from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
-from docling_core.types.doc import DoclingDocument
+from docling_core.types.doc import DocItemLabel, DoclingDocument
+from docling_core.types.doc.document import DOCUMENT_TOKENS_EXPORT_LABELS
 from docling_core.types.io import DocumentStream
 
 from alexandria_core.models import Page
 from alexandria_ingest.doctags import LiteralTextVlmPipeline, restore_literal_less_than
+from alexandria_ingest.latex import normalize_math
 from alexandria_ingest.settings import DEFAULT_FORMATS, input_format
 
 # C0 control characters and DEL, except tab and newline. PDFs with broken font encodings turn glyphs into these;
 # they carry no meaning, and Postgres text cannot hold NUL at all.
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+# What Docling exports by default, without page numbers and running footers: noise at the end of every page.
+_EXPORTED_LABELS = DOCUMENT_TOKENS_EXPORT_LABELS - {DocItemLabel.PAGE_FOOTER}
 
 
 def clean_text(text: str) -> str:
@@ -64,4 +70,5 @@ class DoclingExtractor:
 def _markdown(document: DoclingDocument, page_no: int | None = None) -> str:
     """One page, or the whole document, as storable Markdown."""
     # Docling escapes for HTML rendering by default ("S&amp;P"); readers here are the agent and full-text search.
-    return clean_text(restore_literal_less_than(document.export_to_markdown(page_no=page_no, escape_html=False)))
+    exported = document.export_to_markdown(page_no=page_no, escape_html=False, labels=_EXPORTED_LABELS)
+    return clean_text(normalize_math(restore_literal_less_than(exported)))
