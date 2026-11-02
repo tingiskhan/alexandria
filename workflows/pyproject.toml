@@ -12,7 +12,7 @@ dependencies = [
     "prefect>=3.4",
     # Prefect 3.9's scheduler fails on SQLAlchemy 2.1 ("Can't evaluate bulk DML statement") and creates no
     # scheduled runs; manual runs still work. Lift this once Prefect supports 2.1.
-    "sqlalchemy<2.1",
+    "sqlalchemy<2.2",
     "typer>=0.27.3",
 ]
 
