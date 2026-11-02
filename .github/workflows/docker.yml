@@ -1,0 +1,59 @@
+name: Docker
+
+# Pull requests that touch the image or the compose file: build the CPU variant without pushing, smoke-test it,
+# and validate the compose file. Dependency updates don't run this; the next tag, or a v*-rc tag, builds them.
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - deploy/**
+      - .github/workflows/docker.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: TORCH=cpu
+          load: true
+          tags: alexandria:pr
+          cache-from: type=gha,scope=cpu
+          cache-to: type=gha,mode=max,scope=cpu
+
+      - name: Smoke-test the image
+        run: |
+          for command in alexandria-ingest alexandria-mcp alexandria-workflows prefect; do
+            docker run --rm alexandria:pr "$command" --help > /dev/null
+          done
+          docker run --rm alexandria:pr python -c "
+          from alexandria_ingest.extract import DoclingExtractor
+          pages = DoclingExtractor({'md'}).extract(b'# Hello\n\nfrom the image', 'a.md')
+          assert pages[0].markdown == '# Hello\n\nfrom the image', pages
+          print('ok:', pages)
+          "
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check deploy/compose.yaml with every profile
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          POSTGRES_PASSWORD=x ALEXANDRIA_S3_SECRET_ACCESS_KEY=x COMPOSE_PROFILES=gpu,cpu,rustfs \
+            docker compose config --quiet
