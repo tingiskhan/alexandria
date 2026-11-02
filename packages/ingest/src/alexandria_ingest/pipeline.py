@@ -10,14 +10,17 @@ One file goes through three steps, split by what they touch so a scheduler can r
 """
 
 import logging
-from collections.abc import Callable, Set
+import re
+from collections.abc import Callable, Iterable, Iterator, Set
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
 
-from alexandria_core.models import Document, DocumentSummary, EmbeddedChunk, FileChange
+from alexandria_core.models import Document, DocumentSummary, EmbeddedChunk, FileChange, Page
 from alexandria_core.protocols import DocumentStore, Embedder, Extractor, FileSource
 from alexandria_ingest.chunk import chunk_pages, embedding_text
+from alexandria_ingest.katex import katex_error
+from alexandria_ingest.latex import Formula, formulas
 
 log = logging.getLogger(__name__)
 
@@ -60,11 +63,35 @@ def triage(change: FileChange, *, store: DocumentStore, formats: Set[str]) -> Ou
     return None
 
 
+def warn_about_truncation(path: str, pages: Iterable[Page]) -> None:
+    """Log paragraphs with an unclosed `{`: usually math cut off mid-formula, which no extractor reports as an error."""
+    for page in pages:
+        for paragraph in re.split(r"\n\s*\n", page.markdown):
+            if paragraph.count("{") > paragraph.count("}"):
+                log.warning("%s p. %d: possibly truncated text: …%s", path, page.number, paragraph[-80:])
+
+
+def formula_errors(page: Page) -> Iterator[tuple[Formula, str]]:
+    """The page's formulas that KaTeX rejects, with its error message."""
+    for formula in formulas(page.markdown):
+        if (error := katex_error(formula.latex, display=formula.display)) is not None:
+            yield formula, error
+
+
+def warn_about_invalid_formulas(path: str, pages: Iterable[Page]) -> None:
+    """Log formulas that will not render. These are mostly model reading errors, so the document is still stored."""
+    for page in pages:
+        for _, error in formula_errors(page):
+            log.warning("%s p. %d: invalid formula: %s", path, page.number, error)
+
+
 def prepare_file(
     change: FileChange, *, source: FileSource, extractor: Extractor, embedder: Embedder, max_tokens: int
 ) -> IndexedDocument:
     """Download → extract → chunk → embed. Writes nothing, so it is safe to retry."""
     pages = extractor.extract(source.download(change.source_id), PurePosixPath(change.path).name)
+    warn_about_truncation(change.path, pages)
+    warn_about_invalid_formulas(change.path, pages)
     document = Document(
         source_id=change.source_id,
         path=change.path,

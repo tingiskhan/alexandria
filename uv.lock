@@ -201,6 +201,7 @@ dependencies = [
     { name = "boto3" },
     { name = "docling" },
     { name = "dropbox" },
+    { name = "dukpy" },
     { name = "httpx" },
     { name = "typer" },
 ]
@@ -213,6 +214,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.40" },
     { name = "docling", specifier = ">=2.50" },
     { name = "dropbox", specifier = ">=12" },
+    { name = "dukpy", specifier = ">=0.6" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "typer", specifier = ">=0.27.3" },
 ]
@@ -1275,6 +1277,38 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/38/cc/6b70cf03321807c3894e6daa583cb3c9fa4a2ed9c15f94946aed0d3ea096/dropbox-12.2.4.tar.gz", hash = "sha256:e7b849555e2865eb306f90bae8d5c09dbe0d925885232660d92d0bea269e200d", size = 1309311, upload-time = "2026-10-22T16:07:43.394Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3e/c3/442b4dd1360c5d4a3b146de0732949c71527fd5282ef7a1e7711cd27037d/dropbox-12.2.4-py3-none-any.whl", hash = "sha256:b83657db0041fc5e23a7cc2745b58f23b8a9665fd9ce34cb43a62454e2405497", size = 716032, upload-time = "2026-10-22T16:07:41.747Z" },
+]
+
+[[package]]
+name = "dukpy"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/f5/0d731f71f68a784e9637c74bfd93ee36666f303da1ad32fed5dc26a54bed/dukpy-0.6.0.tar.gz", hash = "sha256:f8b1d1f75c6a5be9b525dc80f05b6c869a671481be689da146b2c6937b3450ee", size = 2629112, upload-time = "2026-07-23T12:59:47.513Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/93/c7/21c4d7667d5363bd90afae718dad2e962fde65f97578e472c54c1cc2ea0b/dukpy-0.6.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:7db183c0b2f20bdba0c490ba922c5555a5f58ec7b7617fd66917a03832cced46", size = 2670711, upload-time = "2026-07-23T19:01:17.539Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/b3/ae3889166cbb50eab4c2ac7929d70fe18549f9fef5ae7f278c98d1fcc514/dukpy-0.6.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:e6abfb275f6f23cb5a49af64361b0e9936fc2c9f88c9cf3a5e38e114bf19eeb5", size = 2626611, upload-time = "2026-07-23T19:01:20.402Z" },
+    { url = "https://files.pythonhosted.org/packages/17/c3/0319b8b7e66c29a7c80ecaff61fd172287a99d3675e5e73ed2b389561949/dukpy-0.6.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:7ebf8d47d88ff53478d9770476f15eaa74199cd1ac678ca6238354b3a55335f8", size = 4210380, upload-time = "2026-07-23T19:01:23.844Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/12/5d7dedd7e03c50259997700f7983e65a6d3092187365a57e98306de0e660/dukpy-0.6.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c0f382ca51e482c8dff46d60911cd878943a48eae9e554fe386ecafb17ad3e8d", size = 4290572, upload-time = "2026-07-23T19:01:27.716Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/d1/3862ee0874d6caac400d088141373453db08c16ec52c4e0b3608ddeb50e2/dukpy-0.6.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:9a39a3ece6ea0c07c923db6f36ede986c1570fa50f26c7b3ccc54dd2819709bf", size = 4198168, upload-time = "2026-07-23T19:01:30.967Z" },
+    { url = "https://files.pythonhosted.org/packages/63/3f/ec09dd19c49836ce0178332ccaa64174f9ab38c6b68b58a4846fb9a90a84/dukpy-0.6.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:441e6b81f8ec2711bb5f586303a732dbfb2a7667b19934c56f4827e7dde9406e", size = 4258665, upload-time = "2026-07-23T19:01:34.117Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/b0/c37fa82a81fbec24e5462b46c3b4c72d15f828ab6cadd0b9713ae796eb42/dukpy-0.6.0-cp313-cp313-win32.whl", hash = "sha256:2dd5253bbdbf9fa47e703dee3e352d327ccdff7ffc172c50455846a0803f477d", size = 2496018, upload-time = "2026-07-23T19:01:36.742Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/f6/bce8e7ee42660db27dfa276b0b610e725628f515d612505cc4c92e31dec0/dukpy-0.6.0-cp313-cp313-win_amd64.whl", hash = "sha256:ca54f57509a02f1ec6db9d986a84e4981b24a72a0b0dd26c19cd47e922a801a6", size = 2615361, upload-time = "2026-07-23T19:01:39.187Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/a0/adaf6b7ae1fac6f0ccf9e70c961b3c31414de9b0546d938b4e0059708a6c/dukpy-0.6.0-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:be9c9c84ef882269be137cb5ad6b5f70584a9fc33f6655b6622a67d6b7addf1c", size = 2670793, upload-time = "2026-07-23T19:01:41.96Z" },
+    { url = "https://files.pythonhosted.org/packages/06/5c/97b06a69d06e4be2209fe25bbb6a5a9af2111a850b2a860d19e33c70278c/dukpy-0.6.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:ef2ce9364b1be70a87d9527a66b8ad20be104f41fb57930a9c56de66f242a79d", size = 2626669, upload-time = "2026-07-23T19:01:44.676Z" },
+    { url = "https://files.pythonhosted.org/packages/89/b3/c2924cc2260b5b9b5cf65236e0a4669987409b83d3d3f0701e319e56a0e5/dukpy-0.6.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0607e879ebde50cb651d2fe02d3f952e6afecd446c053fdf96e57ab1fcb7daeb", size = 4210358, upload-time = "2026-07-23T19:01:48.001Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/f3/82d1fbc3a4b82ff2e6d788723b6e4b19a6c0c92e031629df46a0f3848321/dukpy-0.6.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:01e7538b99014f3a5ffdd8549d49520c749ba2cad1097473df52ec714419f7b0", size = 4290750, upload-time = "2026-07-23T19:01:51.517Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/f5/09194b8e528eb1eed16118e1a5c6aa152efa47364495e783bffccdb226f2/dukpy-0.6.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:a4e942d388af36c3a4bb7e30a8c0c8e24c9405689ff4b06fbc20f1d8e588be48", size = 4198142, upload-time = "2026-07-23T19:01:54.874Z" },
+    { url = "https://files.pythonhosted.org/packages/60/20/fc3c32a99de2d0789c3543685bb7915332c3d1f7e30bbd9e2b1c54c33936/dukpy-0.6.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:931ce12545f2547d57a032e38f5f31c79d3ee45719f394af2e0a1c9201d558ca", size = 4258748, upload-time = "2026-07-23T19:01:58.372Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/97/091134e416b512da60fa0047595e212c8d08821c1659e6a35745aa7ca386/dukpy-0.6.0-cp314-cp314-win32.whl", hash = "sha256:1514ea201efa21b013e3cd8bd2f680c517011306a21dde321519122b07c9f534", size = 2496020, upload-time = "2026-07-23T19:02:24.811Z" },
+    { url = "https://files.pythonhosted.org/packages/84/2f/3d860208585c7688b55d52cb8000bdb1d5c081ceea47de63caa7da8121fc/dukpy-0.6.0-cp314-cp314-win_amd64.whl", hash = "sha256:1e9fd805c93f40f4ef79559c8ea6582115cac56920aeb344ffa2b05ca532ce82", size = 2615444, upload-time = "2026-07-23T19:02:27.458Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/7e/cc5981d1127a2e9213be4ab66373d94d433e2f4a54d35f350b43e4cbd789/dukpy-0.6.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:19b9163080d1559f8981f59949da01586d5d47dd69b8ca4e9311d8436d873d01", size = 2671117, upload-time = "2026-07-23T19:02:01.206Z" },
+    { url = "https://files.pythonhosted.org/packages/89/5a/362058513a465328a8d3353d446ff3ec3a1a94294d5e7a0409ddfbea323f/dukpy-0.6.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:85a8df0666639d278cf91dceea2082f5c35a0ca266eb8c634db42df16690af7b", size = 2626938, upload-time = "2026-07-23T19:02:04.076Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/15/eabc828844b2e51f78cd8b7ca7def0c44294080f594b525b23e1a3537b99/dukpy-0.6.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e3b71ccf4f35cc31a6eadd690748c86f4efe898a3e1a42457b70432b29fedc93", size = 4217423, upload-time = "2026-07-23T19:02:07.152Z" },
+    { url = "https://files.pythonhosted.org/packages/26/9a/9934715426f159f70ea704bddc68285df14ab539fc385e982e8c15c90add/dukpy-0.6.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e57dc7c4b03a3cdd4f3dadd055237a81af1cfb20c4b7ed33cdf1a707ca1e9a45", size = 4295714, upload-time = "2026-07-23T19:02:10.391Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/e0/a994aa548f1b578fd99d099d94587786edddc3633fee8faa65a289ff8c2b/dukpy-0.6.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:435782814e8fcc6ca350af142a5e7ae0a970d7151a5831a5974d4539bf270876", size = 4203516, upload-time = "2026-07-23T19:02:13.854Z" },
+    { url = "https://files.pythonhosted.org/packages/53/e5/1c23f11b094f5e7625a5c79ecdff087aca9cb768da128eaed1ecd06a4c08/dukpy-0.6.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:82181661cc7039996e9dbb7d6ffc6208e8b2758cc9716d466dcde7f9da98ed42", size = 4263653, upload-time = "2026-07-23T19:02:16.84Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/50/5e478b533c25da934f78cfda2e967209bdb1df3377d80e8124449b17883a/dukpy-0.6.0-cp314-cp314t-win32.whl", hash = "sha256:82647658b5dfd9fd3f21da943407a85cf725ef68556897ee53b7ae41295898f2", size = 2496287, upload-time = "2026-07-23T19:02:19.633Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/a8/cc0ce7c5cf0e12ca01cac9a5dcb1e7d564d254148bddf0870f1c9492efa7/dukpy-0.6.0-cp314-cp314t-win_amd64.whl", hash = "sha256:3c82b323633c4ab74e4f7458f16816a55512e424a8cde3d38076818f231d2b5e", size = 2615767, upload-time = "2026-07-23T19:02:22.172Z" },
 ]
 
 [[package]]

@@ -5,9 +5,12 @@ from typing import Any, ClassVar
 
 import pytest
 from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import VlmPipelineOptions
+from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
 
 from alexandria_core.models import Page
 from alexandria_ingest import extract
+from alexandria_ingest.doctags import LiteralTextVlmPipeline
 from alexandria_ingest.extract import DoclingExtractor
 
 
@@ -17,7 +20,7 @@ class FakeDocument:
     whole: str = ""
     exports: list[tuple[int | None, bool]] = field(default_factory=list)
 
-    def export_to_markdown(self, *, page_no: int | None = None, escape_html: bool) -> str:
+    def export_to_markdown(self, *, page_no: int | None = None, escape_html: bool, labels: set[Any]) -> str:
         self.exports.append((page_no, escape_html))
         return self.whole if page_no is None else self.pages[page_no]
 
@@ -80,9 +83,19 @@ def test_only_the_configured_formats_are_allowed() -> None:
     assert set(converter.format_options) == {InputFormat.IMAGE}  # OCR options; PDF is not allowed
 
 
-def test_pdfs_get_ocr_and_table_options() -> None:
+def test_pdfs_without_a_vlm_get_ocr_and_table_options() -> None:
+    DoclingExtractor({"pdf"}, use_vlm=False)
+
+    [converter] = FakeConverter.instances
+    pdf = converter.format_options[InputFormat.PDF]
+    assert pdf.pipeline_cls is StandardPdfPipeline
+    assert (pdf.pipeline_options.do_ocr, pdf.pipeline_options.do_table_structure) == (True, True)
+
+
+def test_pdfs_go_through_the_vlm_by_default() -> None:
     DoclingExtractor({"pdf"})
 
     [converter] = FakeConverter.instances
-    options = converter.format_options[InputFormat.PDF].pipeline_options
-    assert (options.do_ocr, options.do_table_structure) == (True, True)
+    pdf = converter.format_options[InputFormat.PDF]
+    assert pdf.pipeline_cls is LiteralTextVlmPipeline
+    assert isinstance(pdf.pipeline_options, VlmPipelineOptions)

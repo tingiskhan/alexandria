@@ -10,7 +10,10 @@ from dropbox.exceptions import DropboxException
 from dropbox.oauth import DropboxOAuth2FlowNoRedirect
 from pydantic import ValidationError
 
-from alexandria_ingest.pipeline import extension
+from alexandria_core.db import make_engine
+from alexandria_core.settings import DatabaseSettings
+from alexandria_core.store import PgStore
+from alexandria_ingest.pipeline import extension, formula_errors
 from alexandria_ingest.settings import ExtractSettings
 from alexandria_ingest.sources import make_source
 from alexandria_ingest.sources.sharepoint import GraphError, SharePointSettings, make_sharepoint_client
@@ -60,6 +63,26 @@ def check_source() -> None:
         typer.echo(f"  {path}")
     if len(ingested) > 10:
         typer.echo(f"  … and {len(ingested) - 10} more")
+
+
+@app.command()
+def check_formulas() -> None:
+    """Run every stored formula through KaTeX and list the failures per document and page. Exits 1 if there are any."""
+    try:
+        store = PgStore(make_engine(DatabaseSettings().url.get_secret_value()))
+    except ValidationError as error:
+        typer.echo(f"Configuration is incomplete; see .env.example.\n{error}", err=True)
+        raise typer.Exit(2) from error
+    failures = checked = 0
+    for summary in store.list_documents():
+        for page in store.get_pages(summary.id, 1, summary.page_count):
+            checked += 1
+            for formula, error in formula_errors(page):
+                failures += 1
+                typer.echo(f"{summary.id}\t{page.number}\t{summary.path}\t{error}\t{formula.latex}")
+    typer.echo(f"{failures} invalid formulas on {checked} pages", err=True)
+    if failures:
+        raise typer.Exit(1)
 
 
 @app.command()

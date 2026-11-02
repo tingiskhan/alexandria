@@ -5,16 +5,25 @@ from collections.abc import Iterable
 from io import BytesIO
 
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.pipeline_options import PdfPipelineOptions, VlmConvertOptions, VlmPipelineOptions
 from docling.document_converter import DocumentConverter, FormatOption, ImageFormatOption, PdfFormatOption
+from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
+from docling_core.types.doc import DocItemLabel, DoclingDocument
+from docling_core.types.doc.document import DOCUMENT_TOKENS_EXPORT_LABELS
 from docling_core.types.io import DocumentStream
 
 from alexandria_core.models import Page
+from alexandria_ingest.doctags import LiteralTextVlmPipeline, restore_literal_less_than
+from alexandria_ingest.latex import normalize_math
 from alexandria_ingest.settings import DEFAULT_FORMATS, input_format
 
 # C0 control characters and DEL, except tab and newline. PDFs with broken font encodings turn glyphs into these;
 # they carry no meaning, and Postgres text cannot hold NUL at all.
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+# What Docling exports by default, without page numbers and running footers: noise at the end of every page.
+_EXPORTED_LABELS = DOCUMENT_TOKENS_EXPORT_LABELS - {DocItemLabel.PAGE_FOOTER}
 
 
 def clean_text(text: str) -> str:
@@ -30,13 +39,21 @@ class DoclingExtractor:
     Docling picks the GPU when one is available and falls back to CPU.
     """
 
-    def __init__(self, formats: Iterable[str] = DEFAULT_FORMATS) -> None:
+    def __init__(
+        self, formats: Iterable[str] = DEFAULT_FORMATS, *, use_vlm: bool = True, vlm_preset: str = "mineru2_pro"
+    ) -> None:
         allowed = sorted({input_format(extension) for extension in formats}, key=lambda f: f.value)
-        options = PdfPipelineOptions(do_ocr=True, do_table_structure=True)
+
+        options = PdfPipelineOptions(do_ocr=True, do_table_structure=True, do_formula_enrichment=True)
+        pdf_options = VlmPipelineOptions(vlm_options=VlmConvertOptions.from_preset(vlm_preset)) if use_vlm else options
+
         format_options: dict[InputFormat, FormatOption] = {
-            InputFormat.PDF: PdfFormatOption(pipeline_options=options),
+            InputFormat.PDF: PdfFormatOption(
+                pipeline_options=pdf_options, pipeline_cls=LiteralTextVlmPipeline if use_vlm else StandardPdfPipeline
+            ),
             InputFormat.IMAGE: ImageFormatOption(pipeline_options=options),
         }
+
         self._converter = DocumentConverter(
             allowed_formats=allowed, format_options={f: o for f, o in format_options.items() if f in allowed}
         )
@@ -45,10 +62,13 @@ class DoclingExtractor:
         """Convert one document; `name` (the file name) picks the format. Tables come out as Markdown tables."""
         result = self._converter.convert(DocumentStream(name=name, stream=BytesIO(content)))
         document = result.document
-        # Docling escapes for HTML rendering by default ("S&amp;P"); readers here are the agent and full-text search.
         if not document.pages:
-            return [Page(number=1, markdown=clean_text(document.export_to_markdown(escape_html=False)))]
-        return [
-            Page(number=n, markdown=clean_text(document.export_to_markdown(page_no=n, escape_html=False)))
-            for n in sorted(document.pages)
-        ]
+            return [Page(number=1, markdown=_markdown(document))]
+        return [Page(number=n, markdown=_markdown(document, n)) for n in sorted(document.pages)]
+
+
+def _markdown(document: DoclingDocument, page_no: int | None = None) -> str:
+    """One page, or the whole document, as storable Markdown."""
+    # Docling escapes for HTML rendering by default ("S&amp;P"); readers here are the agent and full-text search.
+    exported = document.export_to_markdown(page_no=page_no, escape_html=False, labels=_EXPORTED_LABELS)
+    return clean_text(normalize_math(restore_literal_less_than(exported)))
