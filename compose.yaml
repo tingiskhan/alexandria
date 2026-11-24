@@ -20,7 +20,7 @@ services:
       retries: 10
 
   rustfs:
-    image: rustfs/rustfs:1.0.5
+    image: rustfs/rustfs:1.0.6
     environment:
       RUSTFS_ACCESS_KEY: ${ALEXANDRIA_S3_ACCESS_KEY_ID:?set ALEXANDRIA_S3_ACCESS_KEY_ID in .env}
       RUSTFS_SECRET_KEY: ${ALEXANDRIA_S3_SECRET_ACCESS_KEY:?set ALEXANDRIA_S3_SECRET_ACCESS_KEY in .env}
