@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths: &python-paths
+      - "**.py"
+      - "**/pyproject.toml"
+      - uv.lock
+      - .python-version
+      - "**/tests/data/**"
+      - .env.example
+      - deploy/**  # tests check that its settings are documented
+      - .github/workflows/ci.yml
+  pull_request:
+    paths: *python-paths
+
+permissions:
+  contents: read
+
+# A new push to the same PR or branch cancels the run still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      
+      - name: Install
+        run: uv sync --locked --extra cpu
+      
+      - name: Lint
+        run: |
+          uv run --no-sync ruff check
+          uv run --no-sync ruff format --check
+      
+      - name: Type check
+        run: uv run --no-sync ty check
+      
+      - name: Test
+        # Unit and integration tests; integration tests start Postgres and RustFS with Docker (testcontainers).
+        run: uv run --no-sync pytest --cov  # fails below the fail_under in pyproject.toml

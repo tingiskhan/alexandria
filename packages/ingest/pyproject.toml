@@ -1,0 +1,32 @@
+[project]
+name = "alexandria-ingest"
+version = "0.1.0"
+description = "Document sources (S3, Dropbox, SharePoint), Docling extraction, chunking and the ingest pipeline for Alexandria"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "alexandria-core",
+    "alexandria-embed",
+    "dropbox>=12",
+    "docling>=2.145.0",
+    "typer>=0.27.3",
+    "boto3>=1.40",
+    "azure-identity>=1.25",
+    "httpx>=0.28",
+    "dukpy>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/alexandria_ingest"]
+
+[project.scripts]
+alexandria-ingest = "alexandria_ingest.cli:app"
+
+[tool.uv.sources]
+alexandria-core = { workspace = true }
+alexandria-embed = { workspace = true }

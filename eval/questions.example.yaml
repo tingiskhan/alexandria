@@ -1,0 +1,27 @@
+# Example questions file for `alexandria-eval`. The entries below are made up and only show the schema.
+#
+#   cp eval/questions.example.yaml eval/questions.yaml    # eval/questions.yaml is git-ignored
+#
+# then replace them with 30–50 questions about your own library. Each entry is a question an agent might ask,
+# the document that answers it (its path as `list_documents` shows it) and the pages that hold the answer
+# (first_page to last_page, inclusive, numbered from 1). Phrase questions the way a user would rather than copying
+# the page's wording, and prefer answers that sit on one or two pages of one document, so a hit elsewhere really
+# is a miss.
+
+questions:
+  - question: What learning rate schedule does the example paper recommend?
+    path: /papers/example-paper.pdf
+    first_page: 4
+    last_page: 5
+  - question: How many vacation days do new employees get?
+    path: /handbooks/example-employee-handbook.pdf
+    first_page: 12
+    last_page: 12
+  - question: What was the example company's revenue growth last year?
+    path: /reports/example-annual-report.pdf
+    first_page: 41
+    last_page: 42
+  - question: How do I reset the example device to factory settings?
+    path: /manuals/example-device-manual.pdf
+    first_page: 3
+    last_page: 3

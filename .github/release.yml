@@ -1,0 +1,10 @@
+# How GitHub groups the generated release notes: pull requests merged since the previous tag, by label.
+# Dependabot labels its pull requests "dependencies"; label anything that needs action when upgrading "breaking".
+changelog:
+  categories:
+    - title: Needs action when upgrading
+      labels: [breaking]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Changes
+      labels: ["*"]

@@ -1,0 +1,12 @@
+1
+00:00:00,000 --> 00:00:03,000
+<i>Welcome to the show.</i>
+
+2
+00:00:03,000 --> 00:00:06,500
+{\an8}Today we talk about widgets,
+and whether a < b.
+
+3
+00:05:10,000 --> 00:05:12,000
+<font color="#ffffff">Back after the break.</font>

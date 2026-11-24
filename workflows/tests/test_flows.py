@@ -1,0 +1,253 @@
+from collections.abc import Iterator
+from datetime import timedelta
+from typing import Any, cast
+
+import pytest
+import typer
+from prefect.client.orchestration import get_client
+from prefect.client.schemas.schedules import IntervalSchedule
+from prefect.testing.utilities import prefect_test_harness
+
+from alexandria_core.db import EMBEDDING_DIMENSION
+from alexandria_core.models import Document, EmbeddedChunk, FileChange
+from alexandria_ingest import extract
+from alexandria_ingest.extract import FormatRouter
+from alexandria_ingest.metadata import MetadataReader
+from alexandria_ingest.sources import ConfiguredSource
+from alexandria_ingest.transcript import TranscriptExtractor
+from alexandria_workflows import flows
+
+from .fakes import FakeEmbedder, FakeExtractor, FakeFileSource, InMemoryStore
+
+
+@pytest.fixture(scope="module", autouse=True)
+def prefect_api() -> Iterator[None]:
+    with prefect_test_harness():
+        yield
+
+
+@pytest.fixture
+def pipeline(monkeypatch: pytest.MonkeyPatch) -> flows.Pipeline:
+    """Replace the composition root's real adapters with fakes; the flow and task wiring stays real."""
+    source = FakeFileSource(
+        files={"/good.pdf": b"# Intro\n\nHello", "/bad.pdf": b"broken"},
+        batches=[
+            [
+                FileChange(source_id="/good.pdf", path="/good.pdf", content_hash="h1"),
+                FileChange(source_id="/bad.pdf", path="/bad.pdf", content_hash="h1"),
+            ]
+        ],
+    )
+    pipeline = flows.Pipeline(
+        source_name="dropbox:/",
+        source=source,
+        extractor=FakeExtractor(),
+        embedder=FakeEmbedder(),
+        store=InMemoryStore(),
+        max_tokens=500,
+        formats=frozenset({"pdf"}),
+        metadata_reader=MetadataReader(),
+    )
+
+    monkeypatch.setattr(flows, "build_pipeline", lambda: pipeline)
+    for step in (flows.list_changes_task, flows.triage_task, flows.prepare_file_task, flows.store_document_task):
+        monkeypatch.setattr(step, "retries", 0)
+    return pipeline
+
+
+def test_sync_flow_completes_with_failures_recorded(pipeline: flows.Pipeline) -> None:
+    state = flows.sync_flow(return_state=True)
+
+    assert state.is_completed()
+    assert state.result() == 1
+    assert pipeline.store.content_hash("/good.pdf") == "h1"
+    assert pipeline.store.failed_documents() == [FileChange(source_id="/bad.pdf", path="/bad.pdf", content_hash="h1")]
+    assert pipeline.store.get_cursor("dropbox:/") == "cursor-1"
+
+
+def test_reindex_flow_reembeds_stored_documents(pipeline: flows.Pipeline) -> None:
+    flows.sync_flow()
+
+    flows.reindex_flow()
+
+    assert [d.path for d in pipeline.store.list_documents()] == ["/good.pdf"]
+
+
+def retry_once(monkeypatch: pytest.MonkeyPatch, step: Any) -> None:
+    monkeypatch.setattr(step, "retries", 1)
+    monkeypatch.setattr(step, "retry_delay_seconds", 0)
+
+
+def test_failed_upsert_is_retried_without_preparing_again(
+    pipeline: flows.Pipeline, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    retry_once(monkeypatch, flows.store_document_task)
+    store = cast("InMemoryStore", pipeline.store)
+    upsert, attempts = store.upsert_document, []
+
+    def flaky_upsert(document: Document, chunks: list[EmbeddedChunk]) -> None:
+        attempts.append(document.path)
+        if len(attempts) == 1:
+            raise ConnectionError("the database system is not yet accepting connections")
+        upsert(document, chunks)
+
+    monkeypatch.setattr(store, "upsert_document", flaky_upsert)
+
+    assert flows.sync_flow() == 1  # only /bad.pdf
+
+    assert attempts == ["/good.pdf", "/good.pdf"]
+    assert cast("FakeFileSource", pipeline.source).downloads == ["/good.pdf", "/bad.pdf"]  # Docling ran once each
+    assert store.content_hash("/good.pdf") == "h1"
+
+
+def test_failed_listing_is_retried(pipeline: flows.Pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+    retry_once(monkeypatch, flows.list_changes_task)
+    source = cast("FakeFileSource", pipeline.source)
+    changes, attempts = source.changes, []
+
+    def flaky_changes(cursor: str | None) -> tuple[list[FileChange], str]:
+        attempts.append(cursor)
+        if len(attempts) == 1:
+            raise ConnectionError("RustFS is restarting")
+        return changes(cursor)
+
+    monkeypatch.setattr(source, "changes", flaky_changes)
+
+    state = flows.sync_flow(return_state=True)
+
+    assert state.is_completed()
+    assert attempts == [None, None]
+    assert pipeline.store.content_hash("/good.pdf") == "h1"
+
+
+def test_other_formats_are_skipped_without_preparing(pipeline: flows.Pipeline) -> None:
+    source = cast("FakeFileSource", pipeline.source)
+    source.batches = [[FileChange(source_id="/notes.txt", path="/notes.txt", content_hash="h1")]]
+
+    assert flows.sync_flow() == 0
+    assert source.downloads == []
+
+
+def test_a_copy_is_stored_as_a_duplicate_and_left_alone_by_reindex(pipeline: flows.Pipeline) -> None:
+    source = cast("FakeFileSource", pipeline.source)
+    source.files["/copy.pdf"] = source.files["/good.pdf"]
+    source.batches = [
+        [
+            FileChange(source_id="/good.pdf", path="/good.pdf", content_hash="h1"),
+            FileChange(source_id="/copy.pdf", path="/copy.pdf", content_hash="h2"),
+        ]
+    ]
+
+    assert flows.sync_flow() == 0
+    flows.reindex_flow()
+
+    store = cast("InMemoryStore", pipeline.store)
+    listed = {d.path: d for d in store.list_documents()}
+    assert listed["/copy.pdf"].duplicate_of == listed["/good.pdf"].id
+    assert store.documents["/copy.pdf"].chunks == []
+    assert store.documents["/good.pdf"].chunks
+
+
+class StubEmbedder:
+    dimension = EMBEDDING_DIMENSION
+
+    def __init__(self, model: str, revision: str, batch_size: int = 32) -> None:
+        self.model_name = model
+
+
+@pytest.fixture
+def real_wiring(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Undo the `pipeline` fixture's shortcut and stub only the heavy adapters, recording the startup steps."""
+    steps: list[str] = []
+    monkeypatch.setenv("ALEXANDRIA_DATABASE_URL", "postgresql+psycopg://user:secret@db/alexandria")
+    monkeypatch.setenv("ALEXANDRIA_CHUNK_MAX_TOKENS", "300")
+    monkeypatch.setenv("ALEXANDRIA_EXTRACT_FORMATS", "pdf,docx,vtt")
+    source = FakeFileSource()
+    monkeypatch.setattr(flows, "make_source", lambda: ConfiguredSource("s3:pdfs/", source))
+    monkeypatch.setattr(flows, "make_engine", lambda url: steps.append(f"engine {url}") or "engine")
+    monkeypatch.setattr(flows, "wait_for_database", lambda engine: steps.append("wait"))
+    monkeypatch.setattr(flows, "migrate", lambda engine: steps.append("migrate"))
+    monkeypatch.setattr(flows, "SentenceTransformerEmbedder", StubEmbedder)
+    monkeypatch.setattr(extract, "DoclingExtractor", FakeExtractor)
+    return steps
+
+
+def test_build_pipeline_wires_settings_and_adapters(real_wiring: list[str]) -> None:
+    pipeline = flows.build_pipeline()
+
+    assert real_wiring == ["engine postgresql+psycopg://user:secret@db/alexandria", "wait", "migrate"]
+    assert pipeline.source_name == "s3:pdfs/|docx,pdf,vtt"  # a new format set starts from a full listing
+    assert pipeline.max_tokens == 300
+    assert pipeline.formats == frozenset({"pdf", "docx", "vtt"})
+    assert pipeline.boilerplate is not None
+    assert pipeline.boilerplate.repeat_min_pages == 4
+    assert pipeline.embedder.model_name == "BAAI/bge-m3"
+    assert isinstance(pipeline.extractor, FormatRouter)
+    docling = pipeline.extractor.extractors["pdf"]
+    assert isinstance(docling, FakeExtractor)
+    assert docling.formats == frozenset({"pdf", "docx"})  # transcripts don't go through Docling
+    assert isinstance(pipeline.extractor.extractors["vtt"], TranscriptExtractor)
+
+
+def test_build_pipeline_refuses_a_model_that_does_not_fit_the_schema(
+    real_wiring: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(StubEmbedder, "dimension", 768)
+
+    with pytest.raises(ValueError, match="768 dimensions; the schema has 1024"):
+        flows.build_pipeline()
+
+
+def serve(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    served: list[Any] = []
+    monkeypatch.setattr(flows, "serve", lambda *deployments: served.extend(deployments))
+    flows.serve_command()
+    return served
+
+
+def test_serve_runs_both_deployments_one_run_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALEXANDRIA_SYNC_INTERVAL", raising=False)
+
+    served = serve(monkeypatch)
+
+    assert [d.name for d in served] == ["sync", "reindex"]
+    assert all(d.schedules == [] for d in served)
+    assert all(d.concurrency_limit == 1 for d in served)
+
+
+def test_an_interval_schedules_sync_but_not_reindex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_SYNC_INTERVAL", "30m")
+
+    sync, reindex = serve(monkeypatch)
+
+    assert [s.schedule.interval for s in sync.schedules] == [timedelta(minutes=30)]
+    assert reindex.schedules == []
+
+
+def test_deploy_registers_both_deployments_on_a_new_process_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALEXANDRIA_SYNC_INTERVAL", "1h")
+
+    flows.deploy_command(work_pool="alexandria-test")
+    flows.deploy_command(work_pool="alexandria-test")  # again: the pool exists and the deployments are updated
+
+    with get_client(sync_client=True) as client:
+        pool = client.read_work_pool("alexandria-test")
+        sync, reindex = (client.read_deployment_by_name(f"{name}/{name}") for name in ("sync", "reindex"))
+    assert pool.type == "process"
+    assert sync.work_pool_name == reindex.work_pool_name == "alexandria-test"
+    # A worker imports the flows from the installed package, not from a file path on this machine.
+    assert sync.entrypoint == "alexandria_workflows.flows.sync_flow"
+    assert reindex.entrypoint == "alexandria_workflows.flows.reindex_flow"
+    assert [s.schedule.interval for s in sync.schedules if isinstance(s.schedule, IntervalSchedule)] == [
+        timedelta(hours=1)
+    ]
+    assert len(sync.schedules) == 1
+    assert reindex.schedules == []
+    assert [d.global_concurrency_limit and d.global_concurrency_limit.limit for d in (sync, reindex)] == [1, 1]
+
+
+def test_deploy_fails_when_a_deployment_is_not_created(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(flows, "deploy", lambda *deployments, **options: [])
+
+    with pytest.raises(typer.Exit):
+        flows.deploy_command(work_pool="alexandria-test")

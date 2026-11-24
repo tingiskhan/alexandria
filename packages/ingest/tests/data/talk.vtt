@@ -1,0 +1,29 @@
+WEBVTT - Widgets in Winter
+Kind: captions
+Language: en
+
+NOTE This transcript is synthetic,
+made up for Alexandria's tests.
+
+STYLE
+::cue { color: yellow; }
+
+intro
+00:00.000 --> 00:04.500 align:start position:10%
+<v Alice>Welcome to the show.</v>
+
+00:04.500 --> 00:09.000
+<v Alice>Today we talk about <b>widgets</b>
+in winter &amp; spring.
+
+00:09.000 --> 00:12.000
+<v.loud Bob Smith>Thanks for having me.</v>
+
+00:12.000 --> 00:14.000
+<v Bob Smith>Thanks for having me.
+
+00:14.000 --> 00:18.000
+<v Bob Smith>The effect only shows up in <c.highlight>the north</c>.
+
+00:11:30.000 --> 00:11:34.000
+<v Alice>Welcome back after the break.

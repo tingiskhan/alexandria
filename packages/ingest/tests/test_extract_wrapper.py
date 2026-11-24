@@ -1,0 +1,124 @@
+"""DoclingExtractor's own logic, with Docling's converter replaced by a fake. test_extract.py covers real Docling."""
+
+from dataclasses import dataclass, field
+from typing import Any, ClassVar
+
+import pytest
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import VlmPipelineOptions
+from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
+
+from alexandria_core.models import Page
+from alexandria_ingest import extract
+from alexandria_ingest.doctags import LiteralTextVlmPipeline
+from alexandria_ingest.extract import DoclingExtractor, make_extractor
+from alexandria_ingest.settings import ExtractSettings
+from alexandria_ingest.transcript import TranscriptExtractor
+
+
+@dataclass
+class FakeDocument:
+    pages: dict[int, str]
+    whole: str = ""
+    exports: list[tuple[int | None, bool]] = field(default_factory=list)
+
+    def export_to_markdown(self, *, page_no: int | None = None, escape_html: bool, labels: set[Any]) -> str:
+        self.exports.append((page_no, escape_html))
+        return self.whole if page_no is None else self.pages[page_no]
+
+
+@dataclass
+class FakeResult:
+    document: FakeDocument
+
+
+class FakeConverter:
+    document = FakeDocument({2: "Second\x00 page", 1: "S&P\tfirst"})
+    instances: ClassVar[list["FakeConverter"]] = []
+
+    def __init__(self, allowed_formats: list[InputFormat], format_options: dict[InputFormat, Any]) -> None:
+        self.allowed_formats = allowed_formats
+        self.format_options = format_options
+        self.converted: list[Any] = []
+        FakeConverter.instances.append(self)
+
+    def convert(self, stream: Any) -> FakeResult:
+        self.converted.append(stream)
+        return FakeResult(self.document)
+
+
+@pytest.fixture(autouse=True)
+def fake_converter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(extract, "DocumentConverter", FakeConverter)
+    monkeypatch.setattr(FakeConverter, "document", FakeDocument({2: "Second\x00 page", 1: "S&P\tfirst"}))
+    monkeypatch.setattr(FakeConverter, "instances", [])
+
+
+def test_pages_come_out_in_order_with_control_characters_removed() -> None:
+    pages = DoclingExtractor().extract(b"%PDF-1.7", "report.pdf")
+
+    assert pages == [Page(1, "S&P\tfirst"), Page(2, "Second page")]
+    assert FakeConverter.document.exports == [(1, False), (2, False)]  # HTML escaping off
+
+
+def test_the_file_name_picks_the_format() -> None:
+    DoclingExtractor().extract(b"<p>hi</p>", "Notes.HTML")
+
+    [converter] = FakeConverter.instances
+    assert [stream.name for stream in converter.converted] == ["Notes.HTML"]
+
+
+def test_a_document_without_pages_is_one_page() -> None:
+    FakeConverter.document = FakeDocument({}, whole="# Plan\n\nShip\x07 it")
+
+    pages = DoclingExtractor().extract(b"PK...", "plan.docx")
+
+    assert pages == [Page(1, "# Plan\n\nShip it")]
+    assert FakeConverter.document.exports == [(None, False)]
+
+
+def test_only_the_configured_formats_are_allowed() -> None:
+    DoclingExtractor({"docx", "md", "txt", "png"})
+
+    [converter] = FakeConverter.instances
+    assert converter.allowed_formats == [InputFormat.DOCX, InputFormat.IMAGE, InputFormat.MD]
+    assert set(converter.format_options) == {InputFormat.IMAGE}  # OCR options; PDF is not allowed
+
+
+def test_pdfs_without_a_vlm_get_ocr_and_table_options() -> None:
+    DoclingExtractor({"pdf"}, use_vlm=False)
+
+    [converter] = FakeConverter.instances
+    pdf = converter.format_options[InputFormat.PDF]
+    assert pdf.pipeline_cls is StandardPdfPipeline
+    assert (pdf.pipeline_options.do_ocr, pdf.pipeline_options.do_table_structure) == (True, True)
+
+
+def test_pdfs_go_through_the_vlm_by_default() -> None:
+    DoclingExtractor({"pdf"})
+
+    [converter] = FakeConverter.instances
+    pdf = converter.format_options[InputFormat.PDF]
+    assert pdf.pipeline_cls is LiteralTextVlmPipeline
+    assert isinstance(pdf.pipeline_options, VlmPipelineOptions)
+
+
+def test_make_extractor_sends_transcripts_past_docling() -> None:
+    router = make_extractor(ExtractSettings())
+
+    [converter] = FakeConverter.instances
+    assert InputFormat.VTT not in converter.allowed_formats
+    assert isinstance(router.extractors["pdf"], DoclingExtractor)
+    assert isinstance(router.extractors["vtt"], TranscriptExtractor)
+    assert router.extractors["srt"] is router.extractors["vtt"]
+    assert router.extract(b"1\n00:00:01,000 --> 00:00:02,000\nHi", "Talk.SRT")[0].markdown.endswith("Hi")
+    assert router.extract(b"%PDF-1.7", "report.pdf") == [Page(1, "S&P\tfirst"), Page(2, "Second page")]
+
+
+def test_make_extractor_without_docling_formats_sets_up_no_docling() -> None:
+    router = make_extractor(ExtractSettings(formats=frozenset({"vtt"}), transcript_block_minutes=1))
+
+    assert FakeConverter.instances == []
+    assert set(router.extractors) == {"vtt"}
+    with pytest.raises(ValueError, match=r"no extractor for 'a\.pdf'; extensions: vtt"):
+        router.extract(b"%PDF-1.7", "a.pdf")
