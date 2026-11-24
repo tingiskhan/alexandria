@@ -9,7 +9,7 @@ dependencies = [
     "alexandria-core",
     "alexandria-embed",
     "mcp>=2.3",
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.4",
     "typer>=0.27.3",
 ]
 

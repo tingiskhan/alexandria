@@ -5,7 +5,7 @@ description = "Sentence-transformers embedder for Alexandria"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
-dependencies = ["alexandria-core", "sentence-transformers>=6"]
+dependencies = ["alexandria-core", "sentence-transformers>=6.3.0"]
 
 [build-system]
 requires = ["hatchling"]
