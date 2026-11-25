@@ -107,7 +107,7 @@ services:
         condition: service_healthy
 
   rustfs:
-    image: rustfs/rustfs:1.0.5
+    image: rustfs/rustfs:1.0.6
     profiles: [rustfs]
     environment:
       RUSTFS_ACCESS_KEY: ${ALEXANDRIA_S3_ACCESS_KEY_ID:?set ALEXANDRIA_S3_ACCESS_KEY_ID in .env}
