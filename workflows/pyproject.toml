@@ -9,7 +9,7 @@ dependencies = [
     "alexandria-core",
     "alexandria-embed",
     "alexandria-ingest",
-    "prefect>=3.4",
+    "prefect>=3.9.4",
     # Prefect 3.9's scheduler fails on SQLAlchemy 2.1 ("Can't evaluate bulk DML statement") and creates no
     # scheduled runs; manual runs still work. Lift this once Prefect supports 2.1.
     "sqlalchemy<2.2",

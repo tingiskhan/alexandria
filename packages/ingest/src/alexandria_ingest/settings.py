@@ -18,7 +18,13 @@ TRANSCRIPT_FORMATS = frozenset({"vtt", "srt"})
 DEFAULT_FORMATS = frozenset({"pdf", "docx", "pptx", "xlsx", "html", "htm", "md", "txt"}) | TRANSCRIPT_FORMATS
 
 # Extensions Docling lists under more than one format, resolved to the one a library of documents means.
-_PREFERRED = {"txt": InputFormat.MD}  # not USPTO patent XML
+_PREFERRED = {
+    "txt": InputFormat.MD,  # not USPTO patent XML
+    # not inline XBRL financial filings
+    "html": InputFormat.HTML,
+    "htm": InputFormat.HTML,
+    "xhtml": InputFormat.HTML,
+}
 
 
 def extension(path: str) -> str:
