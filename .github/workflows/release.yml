@@ -101,12 +101,17 @@ jobs:
 
       # GitHub renames assets whose names start with a dot, so the example .env is published as env.example.
       # The notes list the pull requests merged since the previous tag, grouped by .github/release.yml.
-      - name: Create the release
+      # A release made in the GitHub UI (which also pushes the tag) keeps its title and notes and gets the assets.
+      - name: Create the release, or add the assets to an existing one
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp deploy/.env.example env.example
-          prerelease=""
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease="--prerelease"; fi
-          gh release create "$GITHUB_REF_NAME" deploy/compose.yaml env.example \
-            --title "$GITHUB_REF_NAME" --generate-notes $prerelease
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" deploy/compose.yaml env.example --clobber
+          else
+            prerelease=""
+            if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease="--prerelease"; fi
+            gh release create "$GITHUB_REF_NAME" deploy/compose.yaml env.example \
+              --title "$GITHUB_REF_NAME" --generate-notes $prerelease
+          fi

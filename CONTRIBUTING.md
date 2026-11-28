@@ -61,6 +61,6 @@ Tag a commit on `main` with a full version, `vMAJOR.MINOR.PATCH` (`v0.2.0`; `v0.
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The Release workflow builds both image variants, pushes them to GHCR as `0.2.0`, `0.2` and `latest` (with `-cpu` appended for the CPU variant), and publishes a GitHub release with `compose.yaml` and `env.example`. Any other tag starting with `v`, such as `v0.2`, fails the workflow's first job before anything is built.
+The Release workflow builds both image variants, pushes them to GHCR as `0.2.0`, `0.2` and `latest` (with `-cpu` appended for the CPU variant), and publishes a GitHub release with `compose.yaml` and `env.example`. Any other tag starting with `v`, such as `v0.2`, fails the workflow's first job before anything is built. You can also create the release in the GitHub UI, which pushes the tag: the workflow then keeps your title and notes and adds the two files.
 
 By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).
