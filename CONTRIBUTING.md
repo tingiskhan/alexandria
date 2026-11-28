@@ -53,4 +53,14 @@ Revision ids are the next four-digit number and a snake_case description of the 
 
 Keep each pull request to one change, with tests, and explain why the change is needed as well as what it does. Release notes are generated from the titles of merged pull requests, so write the title for a user ("Add a SharePoint source", not "Refactor sources"). If a change needs action when upgrading, such as a migration that needs a re-index, a new required setting or a full re-listing on the first sync, add the `breaking` label and say what to do in the description.
 
+## Releasing
+
+Tag a commit on `main` with a full version, `vMAJOR.MINOR.PATCH` (`v0.2.0`; `v0.2.0-rc.1` for a pre-release), and push the tag:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The Release workflow builds both image variants, pushes them to GHCR as `0.2.0`, `0.2` and `latest` (with `-cpu` appended for the CPU variant), and publishes a GitHub release with `compose.yaml` and `env.example`. Any other tag starting with `v`, such as `v0.2`, fails the workflow's first job before anything is built.
+
 By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).
