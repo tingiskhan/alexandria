@@ -13,7 +13,22 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # docker/metadata-action makes image tags only from a full version, so a tag like v0.1 would build for
+  # nothing and then fail to push. Refuse it before anything is built.
+  check-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that the tag is vMAJOR.MINOR.PATCH
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag $TAG is not a release version. Use vMAJOR.MINOR.PATCH, e.g. v0.1.0, or v0.1.0-rc.1 for a pre-release."
+            exit 1
+          fi
+
   image:
+    needs: check-tag
     runs-on: ubuntu-latest
     permissions:
       contents: read
